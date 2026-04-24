@@ -65,3 +65,13 @@ class CanvasClient:
             f"/api/v1/courses/{course_id}/assignments/{assignment_id}/submissions/self",
             {"include[]": "submission_comments"},
         )
+
+    def get_missing_assignments(self, course_ids):
+        missing = []
+        for cid in course_ids:
+            items = self._get(
+                f"/api/v1/courses/{cid}/assignments",
+                {"bucket": "missing", "per_page": 50},
+            )
+            missing.extend(items)
+        return missing

@@ -156,3 +156,25 @@ def test_get_submission_details_returns_grade_and_comments(mock_get):
         params={"include[]": "submission_comments"},
         timeout=10,
     )
+
+
+@patch("canvas_client.requests.get")
+def test_get_missing_assignments_aggregates_across_courses(mock_get):
+    def side_effect(url, **kwargs):
+        mock_resp = MagicMock()
+        mock_resp.raise_for_status = MagicMock()
+        if "courses/1/assignments" in url:
+            mock_resp.json.return_value = [
+                {"id": 10, "name": "History Quiz", "course_id": 1, "due_at": "2026-04-21T23:59:00Z"}
+            ]
+        elif "courses/2/assignments" in url:
+            mock_resp.json.return_value = []
+        return mock_resp
+
+    mock_get.side_effect = side_effect
+
+    client = make_client()
+    missing = client.get_missing_assignments(["1", "2"])
+
+    assert len(missing) == 1
+    assert missing[0]["name"] == "History Quiz"
