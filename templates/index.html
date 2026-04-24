@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Better Canvas</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: #f0f2f5;
+      color: #2c3e50;
+      min-height: 100vh;
+    }
+
+    header {
+      background: #2c3e50;
+      padding: 14px 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      position: sticky;
+      top: 0;
+      z-index: 10;
+    }
+
+    .logo { color: #fff; font-size: 18px; font-weight: 700; }
+
+    .day-nav { display: flex; align-items: center; gap: 10px; }
+
+    .day-nav button {
+      background: #34495e;
+      color: #fff;
+      border: none;
+      border-radius: 6px;
+      padding: 6px 14px;
+      font-size: 14px;
+      cursor: pointer;
+    }
+
+    .day-nav button:hover { background: #4a6278; }
+
+    #today-btn { background: #27ae60; }
+    #today-btn:hover { background: #2ecc71; }
+
+    #current-date { color: #fff; font-size: 15px; font-weight: 600; min-width: 200px; text-align: center; }
+
+    main { max-width: 760px; margin: 0 auto; padding: 24px 16px; display: flex; flex-direction: column; gap: 28px; }
+
+    .section-label {
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      color: #7f8c8d;
+      margin-bottom: 10px;
+    }
+
+    .section-label.missing-label { color: #e67e22; }
+
+    .card {
+      background: #fff;
+      border-radius: 8px;
+      border: 1px solid #e0e0e0;
+      display: flex;
+      align-items: center;
+      padding: 13px 16px;
+      gap: 14px;
+      margin-bottom: 8px;
+    }
+
+    .card.missing { border-color: #f39c12; }
+    .card.not-submitted { border-color: #e74c3c; }
+
+    .card-time { min-width: 72px; font-size: 13px; font-weight: 600; color: #7f8c8d; }
+
+    .card-body { flex: 1; }
+
+    .card-title { font-size: 14px; font-weight: 700; }
+
+    .card-sub { font-size: 12px; color: #7f8c8d; margin-top: 2px; }
+
+    .card-comment { font-size: 12px; color: #27ae60; font-style: italic; margin-top: 4px; }
+
+    .card-right { text-align: right; white-space: nowrap; }
+
+    .grade { font-size: 18px; font-weight: 700; color: #27ae60; }
+
+    .status { font-size: 12px; font-weight: 600; }
+    .status.submitted { color: #27ae60; }
+    .status.pending { color: #f39c12; }
+    .status.not-submitted { color: #e74c3c; }
+    .status.missing { color: #e67e22; }
+
+    .status-icon {
+      width: 22px; height: 22px; border-radius: 50%;
+      display: inline-flex; align-items: center; justify-content: center;
+      font-size: 12px; font-weight: 700; color: #fff; flex-shrink: 0;
+    }
+
+    .status-icon.ok { background: #2ecc71; }
+    .status-icon.warn { background: #e74c3c; }
+    .status-icon.missing { background: #f39c12; }
+
+    .zoom-btn {
+      background: #3498db;
+      color: #fff;
+      border: none;
+      border-radius: 6px;
+      padding: 7px 14px;
+      font-size: 12px;
+      font-weight: 700;
+      text-decoration: none;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+
+    .zoom-btn:hover { background: #2980b9; }
+
+    .empty { color: #bdc3c7; font-size: 14px; padding: 12px 0; }
+
+    #error-banner {
+      background: #e74c3c;
+      color: #fff;
+      padding: 12px 16px;
+      border-radius: 8px;
+      display: none;
+    }
+
+    #loading { color: #7f8c8d; font-size: 14px; padding: 20px 0; display: none; }
+
+    #missing-section { display: none; }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="logo">📚 Better Canvas</div>
+  <div class="day-nav">
+    <button id="prev-day">◀</button>
+    <span id="current-date"></span>
+    <button id="next-day">▶</button>
+    <button id="today-btn">Today</button>
+  </div>
+</header>
+
+<main>
+  <div id="error-banner"></div>
+  <div id="loading">Loading...</div>
+
+  <section id="schedule-section">
+    <div class="section-label">📅 Today's Schedule</div>
+    <div id="schedule-list"></div>
+  </section>
+
+  <section id="assignments-section">
+    <div class="section-label">📝 Assignments Due Today</div>
+    <div id="assignments-list"></div>
+  </section>
+
+  <section id="missing-section">
+    <div class="section-label missing-label">⚠ Missing Assignments</div>
+    <div id="missing-list"></div>
+  </section>
+</main>
+
+<script>
+  // JS added in Task 9
+</script>
+
+</body>
+</html>
