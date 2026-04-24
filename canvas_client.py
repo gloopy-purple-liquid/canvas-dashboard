@@ -69,9 +69,12 @@ class CanvasClient:
     def get_missing_assignments(self, course_ids):
         missing = []
         for cid in course_ids:
-            items = self._get(
-                f"/api/v1/courses/{cid}/assignments",
-                {"bucket": "missing", "per_page": 50},
-            )
-            missing.extend(items)
+            try:
+                items = self._get(
+                    f"/api/v1/courses/{cid}/assignments",
+                    {"bucket": "missing", "per_page": 50},
+                )
+                missing.extend(items)
+            except requests.HTTPError:
+                pass
         return missing
