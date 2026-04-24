@@ -166,10 +166,15 @@
 </main>
 
 <script>
-  const DAY_MS = 86400000;
-
   function toDateStr(date) {
-    return date.toISOString().slice(0, 10);
+    const y = date.getFullYear();
+    const m = String(date.getMonth() + 1).padStart(2, '0');
+    const d = String(date.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+  }
+
+  function esc(s) {
+    return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
   }
 
   function formatDisplayDate(dateStr) {
@@ -208,12 +213,12 @@
     }
     list.innerHTML = schedule.map(ev => `
       <div class="card">
-        <div class="card-time">${ev.time}</div>
+        <div class="card-time">${esc(ev.time)}</div>
         <div class="card-body">
-          <div class="card-title">${ev.title}</div>
+          <div class="card-title">${esc(ev.title)}</div>
         </div>
-        ${ev.zoom_url
-          ? `<a class="zoom-btn" href="${ev.zoom_url}" target="_blank" rel="noopener">Join Zoom</a>`
+        ${ev.zoom_url && ev.zoom_url.startsWith('https://')
+          ? `<a class="zoom-btn" href="${esc(ev.zoom_url)}" target="_blank" rel="noopener">Join Zoom</a>`
           : ""}
       </div>
     `).join("");
@@ -230,7 +235,7 @@
 
       if (a.submitted && a.graded) {
         iconClass = "ok";
-        statusHtml = `<div class="grade">${a.grade || ""}</div><div class="status submitted">Graded</div>`;
+        statusHtml = `<div class="grade">${esc(a.grade)}</div><div class="status submitted">Graded</div>`;
       } else if (a.submitted) {
         iconClass = "ok";
         statusHtml = `<div class="status pending">Pending grade</div>`;
@@ -242,15 +247,15 @@
       }
 
       const comments = (a.comments || []).map(c =>
-        `<div class="card-comment">"${c}"</div>`
+        `<div class="card-comment">"${esc(c)}"</div>`
       ).join("");
 
       return `
         <div class="card ${cardClass}">
           <span class="status-icon ${iconClass}">${a.submitted ? "✓" : "!"}</span>
           <div class="card-body">
-            <div class="card-title">${a.title}</div>
-            <div class="card-sub">${a.course_name}</div>
+            <div class="card-title">${esc(a.title)}</div>
+            <div class="card-sub">${esc(a.course_name)}</div>
             ${comments}
           </div>
           <div class="card-right">${statusHtml}</div>
@@ -271,8 +276,8 @@
       <div class="card missing">
         <span class="status-icon missing">✗</span>
         <div class="card-body">
-          <div class="card-title">${a.title}</div>
-          <div class="card-sub">${a.course_name}</div>
+          <div class="card-title">${esc(a.title)}</div>
+          <div class="card-sub">${esc(a.course_name)}</div>
         </div>
         <div class="card-right">
           <div class="status missing">Was due ${formatDueDate(a.due_at)}</div>
@@ -283,13 +288,16 @@
 
   async function loadDay(dateStr) {
     hideError();
+    if (currentController) currentController.abort();
+    currentController = new AbortController();
+    const signal = currentController.signal;
     document.getElementById("loading").style.display = "block";
     document.getElementById("current-date").textContent = formatDisplayDate(dateStr);
 
     try {
       const [dayRes, missingRes] = await Promise.all([
-        fetch(`/api/day?date=${dateStr}`),
-        fetch("/api/missing")
+        fetch(`/api/day?date=${dateStr}`, { signal }),
+        fetch("/api/missing", { signal })
       ]);
 
       const day = await dayRes.json();
@@ -299,13 +307,19 @@
 
       renderSchedule(day.schedule || []);
       renderAssignments(day.assignments || []);
+      if (missingData.error) {
+        showError(`Missing assignments unavailable: ${missingData.error}`);
+      }
       renderMissing(missingData.missing || []);
     } catch (err) {
+      if (err.name === 'AbortError') return;
       showError("Could not connect to the local server. Is app.py running?");
     } finally {
       document.getElementById("loading").style.display = "none";
     }
   }
+
+  let currentController = null;
 
   let currentDate = toDateStr(new Date());
 
