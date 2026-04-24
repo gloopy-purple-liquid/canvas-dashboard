@@ -86,3 +86,37 @@ def test_api_day_defaults_to_today(mock_client):
 
     data = resp.get_json()
     assert data["date"] == today
+
+
+@patch("app.canvas_client")
+def test_api_missing_returns_missing_assignments(mock_client):
+    mock_client.get_active_courses.return_value = [
+        {"id": 1, "name": "US History"}
+    ]
+    mock_client.get_missing_assignments.return_value = [
+        {"id": 10, "name": "History Quiz", "course_id": 1, "due_at": "2026-04-21T23:59:00Z"}
+    ]
+
+    flask_app.config["TESTING"] = True
+    with flask_app.test_client() as c:
+        resp = c.get("/api/missing")
+
+    assert resp.status_code == 200
+    data = resp.get_json()
+    assert len(data["missing"]) == 1
+    assert data["missing"][0]["title"] == "History Quiz"
+    assert data["missing"][0]["course_name"] == "US History"
+    assert data["missing"][0]["due_at"] == "2026-04-21T23:59:00Z"
+
+
+@patch("app.canvas_client")
+def test_api_missing_returns_empty_list_when_none(mock_client):
+    mock_client.get_active_courses.return_value = [{"id": 1, "name": "Math"}]
+    mock_client.get_missing_assignments.return_value = []
+
+    flask_app.config["TESTING"] = True
+    with flask_app.test_client() as c:
+        resp = c.get("/api/missing")
+
+    data = resp.get_json()
+    assert data["missing"] == []

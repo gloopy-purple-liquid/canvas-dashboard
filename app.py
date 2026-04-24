@@ -73,5 +73,25 @@ def api_day():
         return jsonify({"error": str(exc)}), 500
 
 
+@app.route("/api/missing")
+def api_missing():
+    try:
+        courses = canvas_client.get_active_courses()
+        course_ids = [str(c["id"]) for c in courses]
+        course_map = {str(c["id"]): c["name"] for c in courses}
+        raw = canvas_client.get_missing_assignments(course_ids)
+        missing = [
+            {
+                "title": a["name"],
+                "course_name": course_map.get(str(a.get("course_id", "")), ""),
+                "due_at": a.get("due_at"),
+            }
+            for a in raw
+        ]
+        return jsonify({"missing": missing})
+    except Exception as exc:
+        return jsonify({"error": str(exc)}), 500
+
+
 if __name__ == "__main__":
     app.run(debug=True)
