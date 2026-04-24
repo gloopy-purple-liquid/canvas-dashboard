@@ -102,3 +102,57 @@ def test_get_schedule_zoom_url_none_when_missing(mock_get):
     schedule = client.get_schedule("2026-04-24", ["1"])
 
     assert schedule[0]["zoom_url"] is None
+
+
+@patch("canvas_client.requests.get")
+def test_get_assignments_due_filters_to_assignments(mock_get):
+    mock_get.return_value.json.return_value = [
+        {
+            "plannable_type": "assignment",
+            "plannable": {
+                "id": 456,
+                "course_id": 789,
+                "title": "Math HW #12",
+                "due_at": "2026-04-24T23:59:00Z",
+                "points_possible": 100,
+            },
+            "submissions": {"submitted": True, "graded": True, "missing": False},
+        },
+        {
+            "plannable_type": "calendar_event",
+            "plannable": {"id": 99, "title": "Study Hall"},
+            "submissions": False,
+        },
+    ]
+    mock_get.return_value.raise_for_status = MagicMock()
+
+    client = make_client()
+    items = client.get_assignments_due("2026-04-24")
+
+    assert len(items) == 1
+    assert items[0]["plannable"]["title"] == "Math HW #12"
+
+
+@patch("canvas_client.requests.get")
+def test_get_submission_details_returns_grade_and_comments(mock_get):
+    mock_get.return_value.json.return_value = {
+        "grade": "94%",
+        "score": 94.0,
+        "submission_comments": [
+            {"comment": "Great work!", "author_name": "Mrs. Anderson"}
+        ],
+    }
+    mock_get.return_value.raise_for_status = MagicMock()
+
+    client = make_client()
+    details = client.get_submission_details("789", "456")
+
+    assert details["grade"] == "94%"
+    assert details["score"] == 94.0
+    assert details["submission_comments"][0]["comment"] == "Great work!"
+    mock_get.assert_called_once_with(
+        "https://canvas.test/api/v1/courses/789/assignments/456/submissions/self",
+        headers={"Authorization": "Bearer test-token"},
+        params={"include[]": "submission_comments"},
+        timeout=10,
+    )

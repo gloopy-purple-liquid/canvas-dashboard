@@ -52,3 +52,16 @@ class CanvasClient:
         description = event.get("description") or ""
         match = re.search(r'https://[^\s"\'<>]*zoom\.us[^\s"\'<>]*', description)
         return match.group(0) if match else None
+
+    def get_assignments_due(self, date_str):
+        items = self._get(
+            "/api/v1/planner/items",
+            {"start_date": date_str, "end_date": date_str, "per_page": 50},
+        )
+        return [i for i in items if i.get("plannable_type") == "assignment"]
+
+    def get_submission_details(self, course_id, assignment_id):
+        return self._get(
+            f"/api/v1/courses/{course_id}/assignments/{assignment_id}/submissions/self",
+            {"include[]": "submission_comments"},
+        )
