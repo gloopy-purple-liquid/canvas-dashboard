@@ -63,8 +63,8 @@ def api_day():
                     assignment["comments"] = [
                         c["comment"] for c in details.get("submission_comments", [])
                     ]
-                except Exception:
-                    pass
+                except Exception as detail_exc:
+                    app.logger.warning("Failed to fetch submission details for %s/%s: %s", cid, aid, detail_exc)
 
             assignments.append(assignment)
 

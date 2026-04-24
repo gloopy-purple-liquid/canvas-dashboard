@@ -3,13 +3,6 @@ import pytest
 from app import app as flask_app
 
 
-@pytest.fixture
-def client():
-    flask_app.config["TESTING"] = True
-    with flask_app.test_client() as c:
-        yield c
-
-
 @patch("app.canvas_client")
 def test_api_day_returns_schedule_and_assignments(mock_client):
     mock_client.get_active_courses.return_value = [
