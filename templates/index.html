@@ -166,7 +166,165 @@
 </main>
 
 <script>
-  // JS added in Task 9
+  const DAY_MS = 86400000;
+
+  function toDateStr(date) {
+    return date.toISOString().slice(0, 10);
+  }
+
+  function formatDisplayDate(dateStr) {
+    const [y, m, d] = dateStr.split("-").map(Number);
+    const dt = new Date(y, m - 1, d);
+    return dt.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" });
+  }
+
+  function shiftDate(dateStr, days) {
+    const [y, m, d] = dateStr.split("-").map(Number);
+    const dt = new Date(y, m - 1, d + days);
+    return toDateStr(dt);
+  }
+
+  function formatDueDate(isoStr) {
+    if (!isoStr) return "";
+    const dt = new Date(isoStr);
+    return dt.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+  }
+
+  function showError(msg) {
+    const banner = document.getElementById("error-banner");
+    banner.textContent = msg;
+    banner.style.display = "block";
+  }
+
+  function hideError() {
+    document.getElementById("error-banner").style.display = "none";
+  }
+
+  function renderSchedule(schedule) {
+    const list = document.getElementById("schedule-list");
+    if (!schedule.length) {
+      list.innerHTML = '<div class="empty">No classes scheduled.</div>';
+      return;
+    }
+    list.innerHTML = schedule.map(ev => `
+      <div class="card">
+        <div class="card-time">${ev.time}</div>
+        <div class="card-body">
+          <div class="card-title">${ev.title}</div>
+        </div>
+        ${ev.zoom_url
+          ? `<a class="zoom-btn" href="${ev.zoom_url}" target="_blank" rel="noopener">Join Zoom</a>`
+          : ""}
+      </div>
+    `).join("");
+  }
+
+  function renderAssignments(assignments) {
+    const list = document.getElementById("assignments-list");
+    if (!assignments.length) {
+      list.innerHTML = '<div class="empty">No assignments due today.</div>';
+      return;
+    }
+    list.innerHTML = assignments.map(a => {
+      let iconClass, statusHtml, cardClass = "";
+
+      if (a.submitted && a.graded) {
+        iconClass = "ok";
+        statusHtml = `<div class="grade">${a.grade || ""}</div><div class="status submitted">Graded</div>`;
+      } else if (a.submitted) {
+        iconClass = "ok";
+        statusHtml = `<div class="status pending">Pending grade</div>`;
+      } else {
+        iconClass = "warn";
+        cardClass = "not-submitted";
+        const due = a.due_at ? `Due ${formatDueDate(a.due_at)}` : "";
+        statusHtml = `<div class="status not-submitted">Not submitted</div><div class="card-sub">${due}</div>`;
+      }
+
+      const comments = (a.comments || []).map(c =>
+        `<div class="card-comment">"${c}"</div>`
+      ).join("");
+
+      return `
+        <div class="card ${cardClass}">
+          <span class="status-icon ${iconClass}">${a.submitted ? "✓" : "!"}</span>
+          <div class="card-body">
+            <div class="card-title">${a.title}</div>
+            <div class="card-sub">${a.course_name}</div>
+            ${comments}
+          </div>
+          <div class="card-right">${statusHtml}</div>
+        </div>
+      `;
+    }).join("");
+  }
+
+  function renderMissing(missing) {
+    const section = document.getElementById("missing-section");
+    const list = document.getElementById("missing-list");
+    if (!missing.length) {
+      section.style.display = "none";
+      return;
+    }
+    section.style.display = "block";
+    list.innerHTML = missing.map(a => `
+      <div class="card missing">
+        <span class="status-icon missing">✗</span>
+        <div class="card-body">
+          <div class="card-title">${a.title}</div>
+          <div class="card-sub">${a.course_name}</div>
+        </div>
+        <div class="card-right">
+          <div class="status missing">Was due ${formatDueDate(a.due_at)}</div>
+        </div>
+      </div>
+    `).join("");
+  }
+
+  async function loadDay(dateStr) {
+    hideError();
+    document.getElementById("loading").style.display = "block";
+    document.getElementById("current-date").textContent = formatDisplayDate(dateStr);
+
+    try {
+      const [dayRes, missingRes] = await Promise.all([
+        fetch(`/api/day?date=${dateStr}`),
+        fetch("/api/missing")
+      ]);
+
+      const day = await dayRes.json();
+      const missingData = await missingRes.json();
+
+      if (day.error) { showError(`Canvas error: ${day.error}`); return; }
+
+      renderSchedule(day.schedule || []);
+      renderAssignments(day.assignments || []);
+      renderMissing(missingData.missing || []);
+    } catch (err) {
+      showError("Could not connect to the local server. Is app.py running?");
+    } finally {
+      document.getElementById("loading").style.display = "none";
+    }
+  }
+
+  let currentDate = toDateStr(new Date());
+
+  document.getElementById("prev-day").addEventListener("click", () => {
+    currentDate = shiftDate(currentDate, -1);
+    loadDay(currentDate);
+  });
+
+  document.getElementById("next-day").addEventListener("click", () => {
+    currentDate = shiftDate(currentDate, 1);
+    loadDay(currentDate);
+  });
+
+  document.getElementById("today-btn").addEventListener("click", () => {
+    currentDate = toDateStr(new Date());
+    loadDay(currentDate);
+  });
+
+  loadDay(currentDate);
 </script>
 
 </body>
