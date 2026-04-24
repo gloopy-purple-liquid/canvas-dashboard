@@ -94,4 +94,5 @@ def api_missing():
 
 
 if __name__ == "__main__":
-    app.run(debug=True)
+    port = int(os.getenv("PORT", 5001))
+    app.run(debug=True, port=port)
