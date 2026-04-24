@@ -3,6 +3,17 @@ import requests
 from datetime import datetime
 
 
+def _format_time(iso_str):
+    if not iso_str:
+        return ""
+    try:
+        dt = datetime.fromisoformat(iso_str.replace("Z", "+00:00"))
+        local_dt = dt.astimezone()
+        return local_dt.strftime("%I:%M %p").lstrip("0")
+    except ValueError:
+        return iso_str
+
+
 class CanvasClient:
     def __init__(self, base_url, token):
         self.base_url = base_url.rstrip("/")
@@ -16,3 +27,28 @@ class CanvasClient:
 
     def get_active_courses(self):
         return self._get("/api/v1/courses", {"enrollment_state": "active", "per_page": 50})
+
+    def get_schedule(self, date_str, course_ids):
+        params = [
+            ("type", "event"),
+            ("start_date", date_str),
+            ("end_date", date_str),
+            ("per_page", "50"),
+        ] + [("context_codes[]", f"course_{cid}") for cid in course_ids]
+        events = self._get("/api/v1/calendar_events", params)
+        return [
+            {
+                "time": _format_time(event.get("start_at", "")),
+                "title": event.get("title", ""),
+                "zoom_url": self._extract_zoom_url(event),
+            }
+            for event in events
+        ]
+
+    def _extract_zoom_url(self, event):
+        location = event.get("location_name") or ""
+        if "zoom.us" in location:
+            return location.strip()
+        description = event.get("description") or ""
+        match = re.search(r'https://[^\s"\'<>]*zoom\.us[^\s"\'<>]*', description)
+        return match.group(0) if match else None
