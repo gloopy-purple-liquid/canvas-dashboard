@@ -25,7 +25,7 @@ def index():
 def api_day():
     date_str = request.args.get("date", date_module.today().isoformat())
     try:
-        courses = canvas_client.get_active_courses()
+        courses = [c for c in canvas_client.get_active_courses() if c.get("name")]
         course_ids = [str(c["id"]) for c in courses]
         course_map = {str(c["id"]): c["name"] for c in courses}
 
@@ -76,7 +76,7 @@ def api_day():
 @app.route("/api/missing")
 def api_missing():
     try:
-        courses = canvas_client.get_active_courses()
+        courses = [c for c in canvas_client.get_active_courses() if c.get("name")]
         course_ids = [str(c["id"]) for c in courses]
         course_map = {str(c["id"]): c["name"] for c in courses}
         raw = canvas_client.get_missing_assignments(course_ids)
