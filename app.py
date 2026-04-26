@@ -23,6 +23,7 @@ def _load_ignore():
 
 
 def _save_ignore(data):
+    os.makedirs(os.path.dirname(IGNORE_FILE), exist_ok=True)
     with open(IGNORE_FILE, "w") as f:
         json.dump(data, f, indent=2)
 
