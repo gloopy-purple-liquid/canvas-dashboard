@@ -45,7 +45,7 @@ pytest==8.3.5
 
 ```
 CANVAS_TOKEN=your_personal_access_token_here
-CANVAS_BASE_URL=https://school.instructure.com
+CANVAS_BASE_URL=https://yourschool.instructure.com
 ```
 
 - [ ] **Step 3: Create directory structure**

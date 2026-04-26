@@ -5,14 +5,14 @@
 
 ## Overview
 
-A local web app that gives a student a single-page daily view of everything they need from Canvas LMS (school.instructure.com): today's class schedule with Zoom links, assignments due today with submission status/grades/teacher comments, and any missing assignments. The parent/student runs it locally — no hosting, no accounts, no config beyond a Canvas API token.
+A local web app that gives a student a single-page daily view of everything they need from Canvas LMS (yourschool.instructure.com): today's class schedule with Zoom links, assignments due today with submission status/grades/teacher comments, and any missing assignments. The parent/student runs it locally — no hosting, no accounts, no config beyond a Canvas API token.
 
 ---
 
 ## Architecture
 
 ```
-[Browser] ←→ [Flask app on localhost:5000] ←→ [Canvas API at school.instructure.com]
+[Browser] ←→ [Flask app on localhost:5000] ←→ [Canvas API at yourschool.instructure.com]
 ```
 
 - **Backend:** Python + Flask. Runs locally with `python app.py`.
@@ -137,7 +137,7 @@ A single `index.html` template rendered by Flask (Jinja2 for injecting the base 
 2. Copy `.env.example` to `.env` and fill in:
    ```
    CANVAS_TOKEN=your_token_here
-   CANVAS_BASE_URL=https://school.instructure.com
+   CANVAS_BASE_URL=https://yourschool.instructure.com
    ```
 3. Get a token: Canvas → Account → Settings → New Access Token
 4. `pip install -r requirements.txt`
