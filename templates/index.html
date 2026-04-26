@@ -27,6 +27,8 @@
 
     .logo { color: #fff; font-size: 18px; font-weight: 700; }
 
+    #last-updated { color: #7f8c8d; font-size: 11px; margin-left: 10px; white-space: nowrap; }
+
     .day-nav { display: flex; align-items: center; gap: 10px; }
 
     .day-nav button {
@@ -204,7 +206,7 @@
 <body>
 
 <header>
-  <div class="logo">📚 Canvas Dashboard</div>
+  <div class="logo">📚 Canvas Dashboard<span id="last-updated"></span></div>
   <div class="day-nav">
     <button id="prev-day">◀</button>
     <span id="current-date"></span>
@@ -435,6 +437,7 @@
       renderMissing(missingData.missing || []);
       document.getElementById("loading").style.display = "none";
 
+      currentTodayStartUtc = day.today_start_utc || '';
       const assignments = day.assignments || [];
       if (assignments.length) {
         const subRes = await fetch('/api/submissions', {
@@ -445,8 +448,9 @@
         });
         const subs = await subRes.json();
         if (!Array.isArray(subs)) return;
-        applySubmissions(subs, day.today_start_utc || '');
+        applySubmissions(subs, currentTodayStartUtc);
       }
+      startAutoRefresh();
     } catch (err) {
       if (err.name === 'AbortError') return;
       showError("Could not connect to the local server. Is app.py running?");
@@ -496,22 +500,59 @@
   }
 
   let currentController = null;
-
   let currentDate = toDateStr(new Date());
+  let currentTodayStartUtc = '';
+  let refreshTimer = null;
+  const REFRESH_INTERVAL = 5 * 60 * 1000;
+
+  function stopAutoRefresh() {
+    if (refreshTimer) { clearInterval(refreshTimer); refreshTimer = null; }
+  }
+
+  function startAutoRefresh() {
+    stopAutoRefresh();
+    refreshTimer = setInterval(autoRefresh, REFRESH_INTERVAL);
+  }
+
+  async function autoRefresh() {
+    const btns = [...document.querySelectorAll('#assignments-list .hide-btn')];
+    if (!btns.length) return;
+    const items = btns.map(b => ({ id: b.dataset.aid, course_id: b.dataset.cid }));
+    try {
+      const [subRes, missingRes] = await Promise.all([
+        fetch('/api/submissions', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(items),
+        }),
+        fetch('/api/missing'),
+      ]);
+      const subs = await subRes.json();
+      const missingData = await missingRes.json();
+      if (Array.isArray(subs)) applySubmissions(subs, currentTodayStartUtc);
+      if (missingData.missing) renderMissing(missingData.missing);
+      const t = new Date();
+      document.getElementById('last-updated').textContent =
+        ` · ${t.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}`;
+    } catch (_) {}
+  }
 
   document.getElementById("prev-day").addEventListener("click", () => {
+    stopAutoRefresh();
     clearDay();
     currentDate = shiftDate(currentDate, -1);
     loadDay(currentDate);
   });
 
   document.getElementById("next-day").addEventListener("click", () => {
+    stopAutoRefresh();
     clearDay();
     currentDate = shiftDate(currentDate, 1);
     loadDay(currentDate);
   });
 
   document.getElementById("today-btn").addEventListener("click", () => {
+    stopAutoRefresh();
     clearDay();
     currentDate = toDateStr(new Date());
     loadDay(currentDate);
