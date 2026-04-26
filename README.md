@@ -9,7 +9,7 @@ docker run -d \
   -p 5001:5001 \
   -e CANVAS_BASE_URL=https://yourschool.instructure.com \
   -e CANVAS_TOKEN=your_token_here \
-  -v canvas-dashboard-data:/data \
+  -v canvas-dashboard-data:/config \
   --name canvas-dashboard \
   ghcr.io/gloopy-purple-liquid/canvas-dashboard:latest
 ```
@@ -36,14 +36,14 @@ Works with both student and parent/observer accounts. Observer accounts automati
 
 ## Persisting the ignore list
 
-When you hide an assignment or course, that preference is saved to `/data/ignore.json` inside the container. Mount a volume to keep it across container restarts:
+When you hide an assignment or course, that preference is saved to `/config/ignore.json` inside the container. Mount a volume to keep it across container restarts:
 
 ```bash
 # Named volume (recommended)
--v canvas-dashboard-data:/data
+-v canvas-dashboard-data:/config
 
 # Or bind mount to a local directory
--v /path/to/local/dir:/data
+-v /path/to/local/dir:/config
 ```
 
 The ignore list resets to empty if no volume is mounted, which is fine if you don't use the hide feature.

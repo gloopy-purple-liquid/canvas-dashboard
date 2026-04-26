@@ -8,8 +8,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY app.py canvas_client.py ./
 COPY templates/ templates/
 
-RUN mkdir -p /data
-ENV DATA_DIR=/data
+RUN mkdir -p /config
+ENV DATA_DIR=/config
 
 EXPOSE 5001
 
