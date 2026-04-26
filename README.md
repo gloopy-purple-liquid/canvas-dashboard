@@ -11,7 +11,7 @@ docker run -d \
   -e CANVAS_TOKEN=your_token_here \
   -v canvas-dashboard-data:/data \
   --name canvas-dashboard \
-  ghcr.io/yourusername/canvas-dashboard:latest
+  ghcr.io/gloopy-purple-liquid/canvas-dashboard:latest
 ```
 
 Then open [http://localhost:5001](http://localhost:5001).
@@ -56,7 +56,7 @@ docker run -d \
   -p 5001:5001 \
   -e CANVAS_BASE_URL=https://yourschool.instructure.com \
   -e CANVAS_TOKEN=your_token_here \
-  canvas-dashboard
+  ghcr.io/gloopy-purple-liquid/canvas-dashboard:latest
 ```
 
 ## Running without Docker
