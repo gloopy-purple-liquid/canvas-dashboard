@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Better Canvas</title>
+  <title>Canvas Dashboard</title>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -128,15 +128,83 @@
       display: none;
     }
 
-    #loading { color: #7f8c8d; font-size: 14px; padding: 20px 0; display: none; }
+    #loading { padding: 32px 0; display: none; text-align: center; }
+
+    .spinner {
+      width: 36px; height: 36px;
+      border: 3px solid #e0e0e0;
+      border-top-color: #3498db;
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+      margin: 0 auto 10px;
+    }
+
+    .spinner-label { color: #7f8c8d; font-size: 13px; }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
 
     #missing-section { display: none; }
+
+    .card { position: relative; overflow: hidden; }
+
+    .hide-btn {
+      display: none;
+      position: absolute;
+      top: 6px; right: 8px;
+      background: none;
+      border: none;
+      color: #bdc3c7;
+      font-size: 15px;
+      line-height: 1;
+      padding: 2px 5px;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+    .card:hover .hide-btn { display: block; }
+    .hide-btn:hover { color: #7f8c8d; background: #f0f2f5; }
+
+    .hide-opts {
+      display: none;
+      position: absolute;
+      inset: 0;
+      background: rgba(44,62,80,0.94);
+      border-radius: 8px;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      padding: 10px;
+      flex-wrap: wrap;
+    }
+    .hide-opts.open { display: flex; }
+
+    .hide-opts-btn {
+      background: rgba(255,255,255,0.15);
+      color: #fff;
+      border: 1px solid rgba(255,255,255,0.25);
+      border-radius: 5px;
+      padding: 6px 12px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+    .hide-opts-btn:hover { background: rgba(255,255,255,0.28); }
+
+    .hide-opts-cancel {
+      background: none;
+      color: #aaa;
+      border: none;
+      font-size: 12px;
+      cursor: pointer;
+      padding: 6px 8px;
+    }
+    .hide-opts-cancel:hover { color: #fff; }
   </style>
 </head>
 <body>
 
 <header>
-  <div class="logo">📚 Better Canvas</div>
+  <div class="logo">📚 Canvas Dashboard</div>
   <div class="day-nav">
     <button id="prev-day">◀</button>
     <span id="current-date"></span>
@@ -147,7 +215,7 @@
 
 <main>
   <div id="error-banner"></div>
-  <div id="loading">Loading...</div>
+  <div id="loading"><div class="spinner"></div><div class="spinner-label">Loading…</div></div>
 
   <section id="schedule-section">
     <div class="section-label">📅 Today's Schedule</div>
@@ -155,7 +223,7 @@
   </section>
 
   <section id="assignments-section">
-    <div class="section-label">📝 Assignments Due Today</div>
+    <div class="section-label">📝 Assignments</div>
     <div id="assignments-list"></div>
   </section>
 
@@ -224,41 +292,36 @@
     `).join("");
   }
 
-  function renderAssignments(assignments) {
+  function renderAssignments(assignments, checking = false) {
     const list = document.getElementById("assignments-list");
     if (!assignments.length) {
-      list.innerHTML = '<div class="empty">No assignments due today.</div>';
+      list.innerHTML = '<div class="empty">No assignments this week.</div>';
       return;
     }
     list.innerHTML = assignments.map(a => {
-      let iconClass, statusHtml, cardClass = "";
-
-      if (a.submitted && a.graded) {
-        iconClass = "ok";
-        statusHtml = `<div class="grade">${esc(a.grade)}</div><div class="status submitted">Graded</div>`;
-      } else if (a.submitted) {
-        iconClass = "ok";
-        statusHtml = `<div class="status pending">Pending grade</div>`;
-      } else {
-        iconClass = "warn";
-        cardClass = "not-submitted";
-        const due = a.due_at ? `Due ${formatDueDate(a.due_at)}` : "";
-        statusHtml = `<div class="status not-submitted">Not submitted</div><div class="card-sub">${due}</div>`;
-      }
-
-      const comments = (a.comments || []).map(c =>
-        `<div class="card-comment">"${esc(c)}"</div>`
-      ).join("");
+      const due = a.due_at ? `Due ${formatDueDate(a.due_at)}` : "";
+      const statusHtml = checking
+        ? `<div class="status" style="color:#bdc3c7">Checking…</div>`
+        : `<div class="status not-submitted">Not submitted</div><div class="card-sub-due card-sub">${due}</div>`;
 
       return `
-        <div class="card ${cardClass}">
-          <span class="status-icon ${iconClass}">${a.submitted ? "✓" : "!"}</span>
+        <div class="card${checking ? ' checking' : ' not-submitted'}" data-due="${esc(a.due_at || '')}">
+          <span class="status-icon${checking ? '' : ' warn'}">${checking ? '' : '!'}</span>
           <div class="card-body">
             <div class="card-title">${esc(a.title)}</div>
             <div class="card-sub">${esc(a.course_name)}</div>
-            ${comments}
           </div>
           <div class="card-right">${statusHtml}</div>
+          <button class="hide-btn"
+                  data-aid="${esc(a.id)}"
+                  data-cid="${esc(a.course_id)}"
+                  data-cname="${esc(a.course_name)}"
+                  onclick="openHideOpts(event, this)">×</button>
+          <div class="hide-opts" id="ho-${esc(a.id)}">
+            <button class="hide-opts-btn" onclick="doIgnore(event, this, 'assignment')">Hide assignment</button>
+            <button class="hide-opts-btn" data-role="course-btn" onclick="doIgnore(event, this, 'course')">Hide course</button>
+            <button class="hide-opts-cancel" onclick="closeAllHideOpts(event)">Cancel</button>
+          </div>
         </div>
       `;
     }).join("");
@@ -282,12 +345,70 @@
         <div class="card-right">
           <div class="status missing">Was due ${formatDueDate(a.due_at)}</div>
         </div>
+        <button class="hide-btn"
+                data-aid="${esc(a.id)}"
+                data-cid="${esc(a.course_id)}"
+                data-cname="${esc(a.course_name)}"
+                onclick="openHideOpts(event, this)">×</button>
+        <div class="hide-opts" id="ho-${esc(a.id)}">
+          <button class="hide-opts-btn" onclick="doIgnore(event, this, 'assignment')">Hide assignment</button>
+          <button class="hide-opts-btn" data-role="course-btn" onclick="doIgnore(event, this, 'course')">Hide course</button>
+          <button class="hide-opts-cancel" onclick="closeAllHideOpts(event)">Cancel</button>
+        </div>
       </div>
     `).join("");
   }
 
+  function openHideOpts(event, btn) {
+    event.stopPropagation();
+    closeAllHideOpts(event);
+    const opts = document.getElementById(`ho-${btn.dataset.aid}`);
+    opts.querySelector('[data-role="course-btn"]').textContent = `Hide all ${btn.dataset.cname}`;
+    opts.classList.add('open');
+  }
+
+  function doIgnore(event, btn, type) {
+    event.stopPropagation();
+    const card = btn.closest('.card');
+    const hidBtn = card.querySelector('.hide-btn');
+    const id = type === 'assignment' ? hidBtn.dataset.aid : hidBtn.dataset.cid;
+    ignoreItem(type, id);
+  }
+
+  function closeAllHideOpts(event) {
+    if (event) event.stopPropagation();
+    document.querySelectorAll('.hide-opts.open').forEach(el => el.classList.remove('open'));
+  }
+
+  async function ignoreItem(type, id) {
+    fetch('/api/ignore', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({type, id})
+    });
+    if (type === 'assignment') {
+      document.querySelectorAll(`.hide-btn[data-aid="${CSS.escape(id)}"]`).forEach(btn => {
+        btn.closest('.card').remove();
+      });
+    } else {
+      document.querySelectorAll(`.hide-btn[data-cid="${CSS.escape(id)}"]`).forEach(btn => {
+        btn.closest('.card').remove();
+      });
+    }
+  }
+
+  document.addEventListener('click', closeAllHideOpts);
+
+  function clearDay() {
+    document.getElementById("schedule-list").innerHTML = "";
+    document.getElementById("assignments-list").innerHTML = "";
+    document.getElementById("missing-list").innerHTML = "";
+    document.getElementById("missing-section").style.display = "none";
+  }
+
   async function loadDay(dateStr) {
     hideError();
+    clearDay();
     if (currentController) currentController.abort();
     currentController = new AbortController();
     const signal = currentController.signal;
@@ -295,8 +416,9 @@
     document.getElementById("current-date").textContent = formatDisplayDate(dateStr);
 
     try {
+      const tzoffset = new Date().getTimezoneOffset();
       const [dayRes, missingRes] = await Promise.all([
-        fetch(`/api/day?date=${dateStr}`, { signal }),
+        fetch(`/api/day?date=${dateStr}&tzoffset=${tzoffset}`, { signal }),
         fetch("/api/missing", { signal })
       ]);
 
@@ -306,11 +428,25 @@
       if (day.error) { showError(`Canvas error: ${day.error}`); return; }
 
       renderSchedule(day.schedule || []);
-      renderAssignments(day.assignments || []);
+      renderAssignments(day.assignments || [], true);
       if (missingData.error) {
         showError(`Missing assignments unavailable: ${missingData.error}`);
       }
       renderMissing(missingData.missing || []);
+      document.getElementById("loading").style.display = "none";
+
+      const assignments = day.assignments || [];
+      if (assignments.length) {
+        const subRes = await fetch('/api/submissions', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify(assignments.map(a => ({id: a.id, course_id: a.course_id}))),
+          signal,
+        });
+        const subs = await subRes.json();
+        if (!Array.isArray(subs)) return;
+        applySubmissions(subs, day.today_start_utc || '');
+      }
     } catch (err) {
       if (err.name === 'AbortError') return;
       showError("Could not connect to the local server. Is app.py running?");
@@ -319,21 +455,64 @@
     }
   }
 
+  function applySubmissions(subs, todayStartUtc) {
+    for (const s of subs) {
+      const card = document.querySelector(`.hide-btn[data-aid="${CSS.escape(s.id)}"]`)?.closest('.card');
+      if (!card) continue;
+
+      // submitted past-due assignments: remove silently (already done, not relevant to today)
+      if (s.submitted && todayStartUtc && (card.dataset.due || '') < todayStartUtc) {
+        card.remove();
+        continue;
+      }
+
+      const right = card.querySelector('.card-right');
+      const icon = card.querySelector('.status-icon');
+      if (!right || !icon) continue;
+
+      card.classList.remove('not-submitted', 'checking');
+
+      if (s.submitted && s.graded) {
+        icon.className = 'status-icon ok';
+        icon.textContent = '✓';
+        right.innerHTML = `<div class="grade">${esc(s.grade)}</div><div class="status submitted">Graded</div>`;
+      } else if (s.submitted) {
+        icon.className = 'status-icon ok';
+        icon.textContent = '✓';
+        right.innerHTML = `<div class="status pending">Pending grade</div>`;
+      } else {
+        icon.className = 'status-icon warn';
+        icon.textContent = '!';
+        card.classList.add('not-submitted');
+        const dueEl = card.querySelector('.card-sub-due');
+        right.innerHTML = `<div class="status not-submitted">Not submitted</div>${dueEl ? dueEl.outerHTML : ''}`;
+      }
+
+      const comments = (s.comments || []).map(c => `<div class="card-comment">"${esc(c)}"</div>`).join('');
+      const body = card.querySelector('.card-body');
+      body.querySelectorAll('.card-comment').forEach(el => el.remove());
+      if (comments) body.insertAdjacentHTML('beforeend', comments);
+    }
+  }
+
   let currentController = null;
 
   let currentDate = toDateStr(new Date());
 
   document.getElementById("prev-day").addEventListener("click", () => {
+    clearDay();
     currentDate = shiftDate(currentDate, -1);
     loadDay(currentDate);
   });
 
   document.getElementById("next-day").addEventListener("click", () => {
+    clearDay();
     currentDate = shiftDate(currentDate, 1);
     loadDay(currentDate);
   });
 
   document.getElementById("today-btn").addEventListener("click", () => {
+    clearDay();
     currentDate = toDateStr(new Date());
     loadDay(currentDate);
   });
