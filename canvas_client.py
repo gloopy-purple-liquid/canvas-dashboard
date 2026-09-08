@@ -45,6 +45,50 @@ def extract_class_time(text):
     return f"{hour}:{minute} {ampm}"
 
 
+def _clean_text(fragment):
+    text = re.sub(r"<[^>]+>", " ", fragment)
+    text = html.unescape(text)
+    return re.sub(r"\s+", " ", text).strip()
+
+
+def parse_homepage_day(body, weekday):
+    result = {"live_class": None, "tasks": []}
+    if not body or weekday < 0 or weekday > 4:
+        return result
+    tab_re = re.compile(
+        r'<div id="tab%d".*?>(.*?)(?=<div id="tab\d+"|$)' % (weekday + 1), re.S
+    )
+    m = tab_re.search(body)
+    if not m:
+        return result
+    segment = m.group(1)
+    for li in re.findall(r"<li\b.*?</li>", segment, re.S):
+        text = _clean_text(li)
+        if not text:
+            continue
+        if "live class" in text.lower() and "attend" in text.lower():
+            if result["live_class"] is None:
+                result["live_class"] = {"title": "Live Class", "time": extract_class_time(text)}
+            continue
+        item_m = re.search(r'href="[^"]*?/courses/\d+/modules/items/(\w+)"', li)
+        item_id = item_m.group(1) if item_m else None
+        href_m = re.search(r'<a\b[^>]*href="([^"]+)"', li)
+        url = html.unescape(href_m.group(1)) if href_m else None
+        link_m = re.search(r"<a\b[^>]*>(.*?)</a>", li, re.S)
+        link_text = _clean_text(link_m.group(1)) if link_m else ""
+        type_label, optional = classify_task_prefix(text)
+        if item_id is None and not optional and type_label == "other":
+            continue
+        result["tasks"].append({
+            "raw_title": link_text or text,
+            "url": url,
+            "item_id": item_id,
+            "type_label": type_label,
+            "optional": optional,
+        })
+    return result
+
+
 def parse_week_range(title, ref_date):
     m = re.search(r'(\d{1,2})/(\d{1,2})\s*-\s*(\d{1,2})/(\d{1,2})', title or "")
     if not m:

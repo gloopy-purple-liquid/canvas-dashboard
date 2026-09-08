@@ -339,3 +339,42 @@ def test_parse_week_range_ok():
 
 def test_parse_week_range_none():
     assert parse_week_range("Pod Squad Homepage", date(2026, 9, 8)) is None
+
+
+import os
+from canvas_client import parse_homepage_day
+
+FIXTURE = os.path.join(os.path.dirname(__file__), "fixtures", "homepage_sample.html")
+
+def _body():
+    with open(FIXTURE) as f:
+        return f.read()
+
+def test_parse_homepage_day_tuesday_live_class_and_tasks():
+    r = parse_homepage_day(_body(), 1)  # Tuesday -> #tab2
+    assert r["live_class"] == {"title": "Live Class", "time": "10:00 AM"}
+    titles = [(t["raw_title"], t["type_label"], t["optional"], t["item_id"]) for t in r["tasks"]]
+    assert ("6W01 - Fall i-Ready Reading Diagnostic", "start", False, "2011877") in titles
+    assert ("6 - Class Name Suggestions", "other", True, "2011879") in titles
+    # the "Need more help?" prose line is not a task
+    assert all("Need more help" not in t["raw_title"] for t in r["tasks"])
+
+def test_parse_homepage_day_wednesday_due_and_reminder():
+    r = parse_homepage_day(_body(), 2)  # Wednesday -> #tab3
+    assert r["live_class"] is None
+    labels = {t["type_label"] for t in r["tasks"]}
+    assert labels == {"due", "reminder"}
+    due = next(t for t in r["tasks"] if t["type_label"] == "due")
+    assert due["item_id"] == "2011878"
+    reminder = next(t for t in r["tasks"] if t["type_label"] == "reminder")
+    assert reminder["item_id"] is None  # reminder has no module link
+
+def test_parse_homepage_day_monday_no_tasks():
+    r = parse_homepage_day(_body(), 0)
+    assert r == {"live_class": None, "tasks": []}
+
+def test_parse_homepage_day_weekend_empty():
+    assert parse_homepage_day(_body(), 5) == {"live_class": None, "tasks": []}
+
+def test_parse_homepage_day_none_body():
+    assert parse_homepage_day(None, 1) == {"live_class": None, "tasks": []}
