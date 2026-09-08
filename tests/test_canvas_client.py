@@ -378,3 +378,29 @@ def test_parse_homepage_day_weekend_empty():
 
 def test_parse_homepage_day_none_body():
     assert parse_homepage_day(None, 1) == {"live_class": None, "tasks": []}
+
+
+from canvas_client import enrich_tasks
+
+def test_enrich_tasks_marks_assignment_submittable():
+    tasks = [{"raw_title": "i-Ready", "url": "u1", "item_id": "2011877", "type_label": "start", "optional": False}]
+    module_map = {"2011877": {"type": "Assignment", "content_id": 771602, "title": "i-Ready", "due_at": None, "points": 15}}
+    out = enrich_tasks(tasks, module_map)
+    assert out == [{
+        "title": "i-Ready", "url": "u1", "type_label": "start", "optional": False,
+        "submittable": True, "content_id": "771602",
+        "submitted": False, "graded": False, "grade": None,
+    }]
+
+def test_enrich_tasks_page_not_submittable():
+    tasks = [{"raw_title": "Resources", "url": "u2", "item_id": "999", "type_label": "other", "optional": False}]
+    module_map = {"999": {"type": "Page", "content_id": None, "title": "Resources", "due_at": None, "points": None}}
+    out = enrich_tasks(tasks, module_map)
+    assert out[0]["submittable"] is False
+    assert out[0]["content_id"] is None
+
+def test_enrich_tasks_unknown_item_not_submittable():
+    tasks = [{"raw_title": "Reminder", "url": None, "item_id": None, "type_label": "reminder", "optional": False}]
+    out = enrich_tasks(tasks, {})
+    assert out[0]["submittable"] is False
+    assert out[0]["title"] == "Reminder"

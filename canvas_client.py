@@ -89,6 +89,30 @@ def parse_homepage_day(body, weekday):
     return result
 
 
+def enrich_tasks(tasks, module_map):
+    enriched = []
+    for t in tasks:
+        info = module_map.get(t["item_id"]) if t["item_id"] else None
+        submittable = bool(info and info.get("type") in ("Assignment", "Quiz"))
+        content_id = (
+            str(info["content_id"])
+            if submittable and info.get("content_id") is not None
+            else None
+        )
+        enriched.append({
+            "title": t["raw_title"],
+            "url": t["url"],
+            "type_label": t["type_label"],
+            "optional": t["optional"],
+            "submittable": submittable,
+            "content_id": content_id,
+            "submitted": False,
+            "graded": False,
+            "grade": None,
+        })
+    return enriched
+
+
 def parse_week_range(title, ref_date):
     m = re.search(r'(\d{1,2})/(\d{1,2})\s*-\s*(\d{1,2})/(\d{1,2})', title or "")
     if not m:
