@@ -1,15 +1,17 @@
+import html
 import re
 import time
 import requests
 from datetime import datetime, date as _date, timedelta, timezone
 
 
-def _format_time(iso_str):
+def _format_time(iso_str, tzoffset=0):
     if not iso_str:
         return ""
     try:
         dt = datetime.fromisoformat(iso_str.replace("Z", "+00:00"))
-        local_dt = dt.astimezone()
+        tz = timezone(timedelta(minutes=-tzoffset))
+        local_dt = dt.astimezone(tz)
         return local_dt.strftime("%I:%M %p").lstrip("0")
     except ValueError:
         return iso_str
@@ -63,17 +65,21 @@ class CanvasClient:
         return result
 
 
-    def get_schedule(self, date_str, course_ids):
+    def get_schedule(self, date_str, course_ids, tzoffset=0):
+        tz = timezone(timedelta(minutes=-tzoffset))
+        d = _date.fromisoformat(date_str)
+        start_utc = datetime(d.year, d.month, d.day, tzinfo=tz).astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        end_utc = datetime(d.year, d.month, d.day, 23, 59, 59, tzinfo=tz).astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
         params = [
             ("type", "event"),
-            ("start_date", date_str),
-            ("end_date", date_str),
+            ("start_date", start_utc),
+            ("end_date", end_utc),
             ("per_page", "50"),
         ] + [("context_codes[]", f"course_{cid}") for cid in course_ids]
         events = self._get("/api/v1/calendar_events", params)
         return [
             {
-                "time": _format_time(event.get("start_at", "")),
+                "time": _format_time(event.get("start_at", ""), tzoffset),
                 "title": event.get("title", ""),
                 "zoom_url": self._extract_zoom_url(event),
             }
@@ -83,10 +89,16 @@ class CanvasClient:
     def _extract_zoom_url(self, event):
         location = event.get("location_name") or ""
         if "zoom.us" in location:
-            return location.strip()
+            url = location.strip()
+            return url if url.startswith("https://") else f"https://{url}"
         description = event.get("description") or ""
         match = re.search(r'https://[^\s"\'<>]*zoom\.us[^\s"\'<>]*', description)
-        return match.group(0) if match else None
+        if match:
+            return html.unescape(match.group(0))
+        lti_match = re.search(r'href="(https?://[^"]+/external_tools/[^"]+)"', description)
+        if lti_match:
+            return html.unescape(lti_match.group(1))
+        return None
 
     def get_assignments_due(self, date_str, course_ids, tzoffset=0):
         # tzoffset: minutes west of UTC (browser getTimezoneOffset() convention)

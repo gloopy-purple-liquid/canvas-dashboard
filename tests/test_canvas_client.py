@@ -77,17 +77,36 @@ def test_get_schedule_returns_formatted_events(mock_get):
     mock_get.return_value.raise_for_status = MagicMock()
 
     client = make_client()
-    schedule = client.get_schedule("2026-04-24", ["1", "2"])
+    # tzoffset=420 → UTC-7 (Pacific), so 14:00Z = 7:00 AM Pacific
+    schedule = client.get_schedule("2026-04-24", ["1", "2"], tzoffset=420)
 
     assert len(schedule) == 1
     assert schedule[0]["title"] == "Mathematics — Period 1"
     assert schedule[0]["zoom_url"] == "https://zoom.us/j/99999"
-    assert "AM" in schedule[0]["time"] or "PM" in schedule[0]["time"]
+    assert schedule[0]["time"] == "7:00 AM"
 
     call_params = mock_get.call_args[1]["params"]
     assert ("type", "event") in call_params
+    # UTC-7: April 24 local = April 24 07:00Z to April 25 06:59:59Z
+    assert ("start_date", "2026-04-24T07:00:00Z") in call_params
+    assert ("end_date", "2026-04-25T06:59:59Z") in call_params
     assert ("context_codes[]", "course_1") in call_params
     assert ("context_codes[]", "course_2") in call_params
+
+
+@patch("canvas_client.requests.get")
+def test_get_schedule_uses_user_timezone_for_time(mock_get):
+    """Times display in the user's timezone, not the server's."""
+    mock_get.return_value.json.return_value = [
+        {"id": "20", "title": "English", "start_at": "2026-04-24T16:00:00Z",
+         "location_name": "", "description": ""},
+    ]
+    mock_get.return_value.raise_for_status = MagicMock()
+
+    client = make_client()
+    # UTC-7: 16:00Z = 9:00 AM local
+    schedule = client.get_schedule("2026-04-24", ["1"], tzoffset=420)
+    assert schedule[0]["time"] == "9:00 AM"
 
 
 @patch("canvas_client.requests.get")
@@ -107,6 +126,46 @@ def test_get_schedule_extracts_zoom_from_description(mock_get):
     schedule = client.get_schedule("2026-04-24", ["1"])
 
     assert schedule[0]["zoom_url"] == "https://zoom.us/j/12345?pwd=abc"
+
+
+@patch("canvas_client.requests.get")
+def test_get_schedule_unescapes_html_entities_in_zoom_url(mock_get):
+    """Canvas HTML descriptions encode & as &amp; — we must unescape before returning."""
+    mock_get.return_value.json.return_value = [
+        {
+            "id": "13",
+            "title": "Math",
+            "start_at": "2026-04-24T16:00:00Z",
+            "location_name": "Room 101",
+            "description": '<a href="https://zoom.us/j/12345?pwd=abc&amp;uname=xyz">Join</a>',
+        }
+    ]
+    mock_get.return_value.raise_for_status = MagicMock()
+
+    client = make_client()
+    schedule = client.get_schedule("2026-04-24", ["1"])
+
+    assert schedule[0]["zoom_url"] == "https://zoom.us/j/12345?pwd=abc&uname=xyz"
+
+
+@patch("canvas_client.requests.get")
+def test_get_schedule_adds_https_to_bare_location_name(mock_get):
+    """location_name may omit the protocol — we prepend https:// so the Join button appears."""
+    mock_get.return_value.json.return_value = [
+        {
+            "id": "14",
+            "title": "Science",
+            "start_at": "2026-04-24T16:00:00Z",
+            "location_name": "zoom.us/j/99999",
+            "description": "",
+        }
+    ]
+    mock_get.return_value.raise_for_status = MagicMock()
+
+    client = make_client()
+    schedule = client.get_schedule("2026-04-24", ["1"])
+
+    assert schedule[0]["zoom_url"] == "https://zoom.us/j/99999"
 
 
 @patch("canvas_client.requests.get")
