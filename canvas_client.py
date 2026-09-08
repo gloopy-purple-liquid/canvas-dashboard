@@ -130,6 +130,9 @@ class CanvasClient:
         self._student_id = None
         self._courses_cache = None
         self._courses_cache_ts = 0
+        self._front_page_cache = {}
+        self._module_map_cache = {}
+        self._zoom_cache = {}
 
     def _resolve_student_id(self):
         if self._student_id is None:
@@ -170,6 +173,63 @@ class CanvasClient:
         self._courses_cache_ts = time.time()
         return result
 
+    def _cache_get(self, cache, key):
+        entry = cache.get(key)
+        if entry is not None and time.time() - entry[1] < 300:
+            return True, entry[0]
+        return False, None
+
+    def get_front_page(self, course_id):
+        cid = str(course_id)
+        hit, value = self._cache_get(self._front_page_cache, cid)
+        if hit:
+            return value
+        try:
+            fp = self._get(f"/api/v1/courses/{cid}/front_page")
+            value = {"title": fp.get("title", ""), "body": fp.get("body") or ""}
+        except Exception:
+            value = None
+        self._front_page_cache[cid] = (value, time.time())
+        return value
+
+    def get_module_items_map(self, course_id):
+        cid = str(course_id)
+        hit, value = self._cache_get(self._module_map_cache, cid)
+        if hit:
+            return value
+        params = [("include[]", "items"), ("include[]", "content_details"), ("per_page", "50")]
+        result = {}
+        try:
+            for module in self._get_all(f"/api/v1/courses/{cid}/modules", params):
+                for item in module.get("items", []):
+                    details = item.get("content_details") or {}
+                    result[str(item.get("id"))] = {
+                        "type": item.get("type"),
+                        "content_id": item.get("content_id"),
+                        "title": item.get("title", ""),
+                        "due_at": details.get("due_at"),
+                        "points": details.get("points_possible"),
+                    }
+        except Exception:
+            result = {}
+        self._module_map_cache[cid] = (result, time.time())
+        return result
+
+    def get_zoom_url(self, course_id):
+        cid = str(course_id)
+        hit, value = self._cache_get(self._zoom_cache, cid)
+        if hit:
+            return value
+        value = None
+        try:
+            for tab in self._get(f"/api/v1/courses/{cid}/tabs"):
+                if (tab.get("label") or "").strip().lower() == "zoom":
+                    value = tab.get("full_url")
+                    break
+        except Exception:
+            value = None
+        self._zoom_cache[cid] = (value, time.time())
+        return value
 
     def get_schedule(self, date_str, course_ids, tzoffset=0):
         tz = timezone(timedelta(minutes=-tzoffset))

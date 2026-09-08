@@ -404,3 +404,56 @@ def test_enrich_tasks_unknown_item_not_submittable():
     out = enrich_tasks(tasks, {})
     assert out[0]["submittable"] is False
     assert out[0]["title"] == "Reminder"
+
+
+@patch("canvas_client.requests.get")
+def test_get_front_page_returns_title_and_body(mock_get):
+    mock_get.return_value.json.return_value = {"title": "W01 09/07 - 09/11 Home", "body": "<div id='tab1'></div>"}
+    mock_get.return_value.raise_for_status = MagicMock()
+    client = make_client()
+    fp = client.get_front_page("11902")
+    assert fp == {"title": "W01 09/07 - 09/11 Home", "body": "<div id='tab1'></div>"}
+    # cached: second call makes no new request
+    client.get_front_page("11902")
+    assert mock_get.call_count == 1
+
+@patch("canvas_client.requests.get")
+def test_get_front_page_none_on_error(mock_get):
+    import requests as req
+    mock_get.return_value.raise_for_status.side_effect = req.HTTPError("404")
+    client = make_client()
+    assert client.get_front_page("11902") is None
+
+@patch("canvas_client.requests.get")
+def test_get_module_items_map_builds_index(mock_get):
+    mock_get.return_value.json.return_value = [
+        {"id": 1, "name": "M1", "items": [
+            {"id": 2011877, "type": "Assignment", "content_id": 771602, "title": "i-Ready",
+             "content_details": {"due_at": "2026-09-12T06:59:59Z", "points_possible": 15.0}},
+            {"id": 2011909, "type": "Page", "content_id": None, "title": "Resources", "content_details": {}},
+        ]},
+    ]
+    mock_get.return_value.raise_for_status = MagicMock()
+    mock_get.return_value.headers = {"Link": ""}
+    client = make_client()
+    m = client.get_module_items_map("11902")
+    assert m["2011877"] == {"type": "Assignment", "content_id": 771602, "title": "i-Ready",
+                            "due_at": "2026-09-12T06:59:59Z", "points": 15.0}
+    assert m["2011909"]["type"] == "Page"
+
+@patch("canvas_client.requests.get")
+def test_get_zoom_url_finds_zoom_tab(mock_get):
+    mock_get.return_value.json.return_value = [
+        {"label": "Home", "full_url": "https://school.instructure.com/courses/11902"},
+        {"label": "Zoom", "full_url": "https://school.instructure.com/courses/11902/external_tools/1039"},
+    ]
+    mock_get.return_value.raise_for_status = MagicMock()
+    client = make_client()
+    assert client.get_zoom_url("11902") == "https://school.instructure.com/courses/11902/external_tools/1039"
+
+@patch("canvas_client.requests.get")
+def test_get_zoom_url_none_when_absent(mock_get):
+    mock_get.return_value.json.return_value = [{"label": "Home", "full_url": "x"}]
+    mock_get.return_value.raise_for_status = MagicMock()
+    client = make_client()
+    assert client.get_zoom_url("11902") is None
