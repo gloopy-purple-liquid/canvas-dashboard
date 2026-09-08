@@ -302,3 +302,40 @@ def test_get_missing_assignments_uses_student_id(mock_get):
         params={"per_page": 50},
         timeout=10,
     )
+
+
+from datetime import date
+from canvas_client import classify_task_prefix, extract_class_time, parse_week_range
+
+
+def test_classify_task_prefix_due():
+    assert classify_task_prefix("🗓️ Due Today: W01 - It's In The Syllabus") == ("due", False)
+
+def test_classify_task_prefix_start_and_continue():
+    assert classify_task_prefix("Start:  6W01 - Fall i-Ready Reading Diagnostic") == ("start", False)
+    assert classify_task_prefix("Continue: 6W01 - Fall i-Ready Reading Diagnostic") == ("continue", False)
+
+def test_classify_task_prefix_optional():
+    assert classify_task_prefix("🌀 Optional: 6 - Class Name Suggestions") == ("other", True)
+
+def test_classify_task_prefix_reading_and_reminder():
+    assert classify_task_prefix("📖 Independent Reading: Read for at least 20 minutes.") == ("reading", False)
+    assert classify_task_prefix("⚠️ Reminder: Select a novel for daily independent reading.") == ("reminder", False)
+
+def test_classify_task_prefix_other():
+    assert classify_task_prefix("Live Class Recordings & Weekly Assignments") == ("other", False)
+
+def test_extract_class_time_variants():
+    assert extract_class_time("Attend: Live Class @ 10am.") == "10:00 AM"
+    assert extract_class_time("Attend Live Class @ 10 am.") == "10:00 AM"
+    assert extract_class_time("Live Class @ 9:30am") == "9:30 AM"
+    assert extract_class_time("Attend Live Class @ 1 pm") == "1:00 PM"
+
+def test_extract_class_time_missing():
+    assert extract_class_time("Attend: Live Class") == ""
+
+def test_parse_week_range_ok():
+    assert parse_week_range("6W01 --> 09/07 - 09/11 - Humanities Homepage", date(2026, 9, 8)) == (date(2026, 9, 7), date(2026, 9, 11))
+
+def test_parse_week_range_none():
+    assert parse_week_range("Pod Squad Homepage", date(2026, 9, 8)) is None

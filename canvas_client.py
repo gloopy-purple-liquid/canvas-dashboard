@@ -17,6 +17,44 @@ def _format_time(iso_str, tzoffset=0):
         return iso_str
 
 
+def classify_task_prefix(text):
+    low = text.lower()
+    optional = "🌀" in text or "optional:" in low
+    if "due today" in low or "🗓" in text:
+        label = "due"
+    elif low.startswith("start"):
+        label = "start"
+    elif low.startswith("continue"):
+        label = "continue"
+    elif "reminder" in low or "⚠" in text:
+        label = "reminder"
+    elif "independent reading" in low or "📖" in text:
+        label = "reading"
+    else:
+        label = "other"
+    return label, optional
+
+
+def extract_class_time(text):
+    m = re.search(r'@\s*(\d{1,2})(?::(\d{2}))?\s*([ap])\.?\s*m\.?', text, re.I)
+    if not m:
+        return ""
+    hour = int(m.group(1))
+    minute = m.group(2) or "00"
+    ampm = m.group(3).upper() + "M"
+    return f"{hour}:{minute} {ampm}"
+
+
+def parse_week_range(title, ref_date):
+    m = re.search(r'(\d{1,2})/(\d{1,2})\s*-\s*(\d{1,2})/(\d{1,2})', title or "")
+    if not m:
+        return None
+    y = ref_date.year
+    start = _date(y, int(m.group(1)), int(m.group(2)))
+    end = _date(y, int(m.group(3)), int(m.group(4)))
+    return (start, end)
+
+
 class CanvasClient:
     def __init__(self, base_url, token):
         self.base_url = base_url.rstrip("/")
