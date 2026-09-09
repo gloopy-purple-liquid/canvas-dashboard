@@ -201,6 +201,94 @@
       padding: 6px 8px;
     }
     .hide-opts-cancel:hover { color: #fff; }
+
+    .add-class-btn {
+      background: none;
+      border: 1px solid #bdc3c7;
+      color: #7f8c8d;
+      border-radius: 5px;
+      font-size: 11px;
+      font-weight: 600;
+      padding: 2px 8px;
+      cursor: pointer;
+      margin-left: 8px;
+      vertical-align: middle;
+    }
+    .add-class-btn:hover { border-color: #3498db; color: #3498db; }
+
+    .card.manual { border-color: #9b59b6; }
+    .manual-badge {
+      font-size: 10px;
+      font-weight: 700;
+      color: #9b59b6;
+      letter-spacing: .5px;
+      margin-top: 2px;
+    }
+
+    .modal-overlay {
+      position: fixed; inset: 0;
+      background: rgba(0,0,0,0.5);
+      display: flex; align-items: center; justify-content: center;
+      z-index: 100;
+    }
+    .modal {
+      background: #fff;
+      border-radius: 10px;
+      padding: 24px;
+      width: 360px;
+      max-width: 95vw;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.18);
+    }
+    .modal h3 { font-size: 16px; font-weight: 700; margin-bottom: 16px; }
+    .modal label { display: block; font-size: 12px; font-weight: 600; color: #7f8c8d; margin-bottom: 10px; }
+    .modal input[type=text], .modal input[type=url] {
+      display: block; width: 100%;
+      border: 1px solid #e0e0e0; border-radius: 5px;
+      padding: 7px 10px; font-size: 13px; margin-top: 3px;
+    }
+    .day-checks { display: flex; gap: 6px; margin-top: 4px; flex-wrap: wrap; }
+    .day-checks label {
+      display: flex; align-items: center; gap: 3px;
+      font-size: 12px; font-weight: 600; color: #2c3e50;
+      background: #f0f2f5; border-radius: 4px; padding: 4px 8px;
+      cursor: pointer; margin-bottom: 0;
+    }
+    .day-checks input { margin: 0; }
+    .modal-actions { display: flex; gap: 8px; margin-top: 16px; justify-content: flex-end; }
+    .modal-actions button { border-radius: 6px; padding: 7px 16px; font-size: 13px; font-weight: 600; cursor: pointer; }
+    .btn-primary { background: #3498db; color: #fff; border: none; }
+    .btn-primary:hover { background: #2980b9; }
+    .btn-cancel { background: none; border: 1px solid #e0e0e0; color: #7f8c8d; }
+    .btn-cancel:hover { border-color: #bdc3c7; }
+
+    .manual-entry-list { margin-top: 16px; border-top: 1px solid #f0f2f5; padding-top: 12px; }
+    .manual-entry-row {
+      display: flex; align-items: center; justify-content: space-between;
+      font-size: 12px; padding: 5px 0; border-bottom: 1px solid #f0f2f5;
+    }
+    .manual-entry-row:last-child { border-bottom: none; }
+    .manual-entry-info { flex: 1; }
+    .manual-entry-name { font-weight: 700; color: #2c3e50; }
+    .manual-entry-meta { color: #7f8c8d; margin-top: 1px; }
+    .remove-entry-btn {
+      background: none; border: none; color: #e74c3c;
+      font-size: 14px; cursor: pointer; padding: 2px 6px;
+    }
+    .remove-entry-btn:hover { color: #c0392b; }
+
+    .task-course { margin: 14px 0 6px; font-weight: 600; color: #2c3e50; }
+    .task-row { display: flex; align-items: center; gap: 10px; padding: 8px 12px;
+                border: 1px solid #e5e8ec; border-radius: 8px; margin-bottom: 6px; background: #fff; }
+    .task-row.optional { opacity: 0.55; }
+    .task-row .t-title { flex: 1; }
+    .task-row .t-title a { color: inherit; text-decoration: none; }
+    .task-row .t-title a:hover { text-decoration: underline; }
+    .task-tag { font-size: 11px; text-transform: uppercase; letter-spacing: .04em;
+                color: #7f8c8d; border: 1px solid #dfe4e8; border-radius: 6px; padding: 1px 6px; }
+    .task-status { width: 18px; text-align: center; font-weight: 700; }
+    .task-status.done { color: #27ae60; }
+    .task-status.todo { color: #e74c3c; }
+    .task-status.info { color: #bdc3c7; }
   </style>
 </head>
 <body>
@@ -220,13 +308,50 @@
   <div id="loading"><div class="spinner"></div><div class="spinner-label">Loading…</div></div>
 
   <section id="schedule-section">
-    <div class="section-label">📅 Today's Schedule</div>
+    <div class="section-label">📅 Today's Schedule <button class="add-class-btn" onclick="openAddClassModal()">+ Add class</button></div>
     <div id="schedule-list"></div>
   </section>
+
+  <div id="add-class-modal" class="modal-overlay" style="display:none" onclick="closeAddClassModal(event)">
+    <div class="modal" onclick="event.stopPropagation()">
+      <h3>Recurring Class</h3>
+      <form id="add-class-form" onsubmit="submitAddClass(event)">
+        <label>Class name
+          <input type="text" id="ac-title" placeholder="5th Grade Core" required>
+        </label>
+        <label>Start time
+          <input type="text" id="ac-time" placeholder="10:30 AM" required>
+        </label>
+        <label>Days
+          <div class="day-checks">
+            <label><input type="checkbox" name="day" value="Mon"> Mon</label>
+            <label><input type="checkbox" name="day" value="Tue"> Tue</label>
+            <label><input type="checkbox" name="day" value="Wed"> Wed</label>
+            <label><input type="checkbox" name="day" value="Thu"> Thu</label>
+            <label><input type="checkbox" name="day" value="Fri"> Fri</label>
+          </div>
+        </label>
+        <label>Zoom / join URL (optional)
+          <input type="url" id="ac-url" placeholder="https://zoom.us/j/...">
+        </label>
+        <div class="modal-actions">
+          <button type="button" class="btn-cancel" onclick="closeAddClassModal()">Cancel</button>
+          <button type="submit" class="btn-primary">Add</button>
+        </div>
+      </form>
+      <div id="manual-entry-list" class="manual-entry-list" style="display:none"></div>
+    </div>
+  </div>
 
   <section id="assignments-section">
     <div class="section-label">📝 Assignments</div>
     <div id="assignments-list"></div>
+  </section>
+
+  <section id="tasks-section">
+    <div class="section-label">📋 Today's Tasks</div>
+    <div id="homepage-note" class="empty" style="display:none">Weekly homepage is only available for the current week.</div>
+    <div id="tasks-list"></div>
   </section>
 
   <section id="missing-section">
@@ -281,17 +406,26 @@
       list.innerHTML = '<div class="empty">No classes scheduled.</div>';
       return;
     }
-    list.innerHTML = schedule.map(ev => `
-      <div class="card">
-        <div class="card-time">${esc(ev.time)}</div>
-        <div class="card-body">
-          <div class="card-title">${esc(ev.title)}</div>
+    list.innerHTML = schedule.map(ev => {
+      const zoomBtn = ev.zoom_url && ev.zoom_url.startsWith('https://')
+        ? `<a class="zoom-btn" href="${esc(ev.zoom_url)}" target="_blank" rel="noopener">Join Zoom</a>`
+        : "";
+      const removeBtn = ev.manual
+        ? `<button class="hide-btn" onclick="removeManualEntry(event,'${esc(ev.manual_id)}')">×</button>`
+        : "";
+      const badge = ev.manual ? `<div class="manual-badge">MANUAL</div>` : "";
+      return `
+        <div class="card${ev.manual ? ' manual' : ''}">
+          <div class="card-time">${esc(ev.time)}</div>
+          <div class="card-body">
+            <div class="card-title">${esc(ev.title)}</div>
+            ${badge}
+          </div>
+          ${zoomBtn}
+          ${removeBtn}
         </div>
-        ${ev.zoom_url && ev.zoom_url.startsWith('https://')
-          ? `<a class="zoom-btn" href="${esc(ev.zoom_url)}" target="_blank" rel="noopener">Join Zoom</a>`
-          : ""}
-      </div>
-    `).join("");
+      `;
+    }).join("");
   }
 
   function renderAssignments(assignments, checking = false) {
@@ -326,6 +460,44 @@
           </div>
         </div>
       `;
+    }).join("");
+  }
+
+  const TASK_TAGS = { due: "Due Today", start: "Start", continue: "Continue", reading: "Reading", reminder: "Reminder", other: "" };
+
+  function renderTasks(taskBlocks, homepageAvailable) {
+    const note = document.getElementById("homepage-note");
+    const list = document.getElementById("tasks-list");
+    if (!homepageAvailable) {
+      note.style.display = "block";
+      list.innerHTML = "";
+      return;
+    }
+    note.style.display = "none";
+    if (!taskBlocks.length) {
+      list.innerHTML = '<div class="empty">No tasks today.</div>';
+      return;
+    }
+    list.innerHTML = taskBlocks.map(block => {
+      const rows = block.items.map(it => {
+        let statusClass = "info", statusChar = "•";
+        if (it.submittable) {
+          if (it.submitted || it.graded) { statusClass = "done"; statusChar = "✓"; }
+          else { statusClass = "todo"; statusChar = "!"; }
+        }
+        const tag = TASK_TAGS[it.type_label] || "";
+        const tagHtml = tag ? `<span class="task-tag">${esc(tag)}</span>` : "";
+        const titleHtml = it.url && /^https?:\/\//i.test(it.url)
+          ? `<a href="${esc(it.url)}" target="_blank" rel="noopener">${esc(it.title)}</a>`
+          : esc(it.title);
+        return `
+          <div class="task-row${it.optional ? ' optional' : ''}">
+            <span class="task-status ${statusClass}">${statusChar}</span>
+            <div class="t-title">${titleHtml}</div>
+            ${tagHtml}
+          </div>`;
+      }).join("");
+      return `<div class="task-course">${esc(block.course_name)}</div>${rows}`;
     }).join("");
   }
 
@@ -404,6 +576,8 @@
   function clearDay() {
     document.getElementById("schedule-list").innerHTML = "";
     document.getElementById("assignments-list").innerHTML = "";
+    document.getElementById("tasks-list").innerHTML = "";
+    document.getElementById("homepage-note").style.display = "none";
     document.getElementById("missing-list").innerHTML = "";
     document.getElementById("missing-section").style.display = "none";
   }
@@ -430,6 +604,7 @@
       if (day.error) { showError(`Canvas error: ${day.error}`); return; }
 
       renderSchedule(day.schedule || []);
+      renderTasks(day.tasks || [], day.homepage_available !== false);
       renderAssignments(day.assignments || [], true);
       if (missingData.error) {
         showError(`Missing assignments unavailable: ${missingData.error}`);
@@ -535,6 +710,60 @@
       document.getElementById('last-updated').textContent =
         ` · ${t.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}`;
     } catch (_) {}
+  }
+
+  async function openAddClassModal() {
+    document.getElementById("add-class-modal").style.display = "flex";
+    document.getElementById("add-class-form").reset();
+    const res = await fetch("/api/schedule-config");
+    const entries = await res.json();
+    const listEl = document.getElementById("manual-entry-list");
+    if (!entries.length) { listEl.style.display = "none"; return; }
+    listEl.style.display = "block";
+    listEl.innerHTML = "<strong style='font-size:12px;color:#7f8c8d'>Existing classes</strong>" +
+      entries.map(e => `
+        <div class="manual-entry-row" id="mer-${esc(e.id)}">
+          <div class="manual-entry-info">
+            <div class="manual-entry-name">${esc(e.title)}</div>
+            <div class="manual-entry-meta">${esc(e.time)} · ${esc((e.days||[]).join(", "))}</div>
+          </div>
+          <button class="remove-entry-btn" onclick="removeManualEntry(event,'${esc(e.id)}')">×</button>
+        </div>
+      `).join("");
+  }
+
+  function closeAddClassModal(event) {
+    if (event && event.target !== document.getElementById("add-class-modal")) return;
+    document.getElementById("add-class-modal").style.display = "none";
+  }
+
+  async function submitAddClass(event) {
+    event.preventDefault();
+    const days = [...document.querySelectorAll('#add-class-form input[name=day]:checked')].map(el => el.value);
+    if (!days.length) { alert("Select at least one day."); return; }
+    const body = {
+      title: document.getElementById("ac-title").value.trim(),
+      time: document.getElementById("ac-time").value.trim(),
+      days,
+      zoom_url: document.getElementById("ac-url").value.trim() || null,
+    };
+    await fetch("/api/schedule-config", {
+      method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(body),
+    });
+    document.getElementById("add-class-modal").style.display = "none";
+    loadDay(currentDate);
+  }
+
+  async function removeManualEntry(event, id) {
+    event.stopPropagation();
+    await fetch(`/api/schedule-config/${encodeURIComponent(id)}`, { method: "DELETE" });
+    document.getElementById(`mer-${id}`)?.remove();
+    document.querySelectorAll(`.card.manual`).forEach(card => {
+      const btn = card.querySelector(".hide-btn");
+      if (btn && btn.getAttribute("onclick")?.includes(id)) card.remove();
+    });
+    const list = document.getElementById("manual-entry-list");
+    if (list && !list.querySelector(".manual-entry-row")) list.style.display = "none";
   }
 
   document.getElementById("prev-day").addEventListener("click", () => {

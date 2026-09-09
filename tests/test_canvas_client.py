@@ -77,17 +77,36 @@ def test_get_schedule_returns_formatted_events(mock_get):
     mock_get.return_value.raise_for_status = MagicMock()
 
     client = make_client()
-    schedule = client.get_schedule("2026-04-24", ["1", "2"])
+    # tzoffset=420 → UTC-7 (Pacific), so 14:00Z = 7:00 AM Pacific
+    schedule = client.get_schedule("2026-04-24", ["1", "2"], tzoffset=420)
 
     assert len(schedule) == 1
     assert schedule[0]["title"] == "Mathematics — Period 1"
     assert schedule[0]["zoom_url"] == "https://zoom.us/j/99999"
-    assert "AM" in schedule[0]["time"] or "PM" in schedule[0]["time"]
+    assert schedule[0]["time"] == "7:00 AM"
 
     call_params = mock_get.call_args[1]["params"]
     assert ("type", "event") in call_params
+    # UTC-7: April 24 local = April 24 07:00Z to April 25 06:59:59Z
+    assert ("start_date", "2026-04-24T07:00:00Z") in call_params
+    assert ("end_date", "2026-04-25T06:59:59Z") in call_params
     assert ("context_codes[]", "course_1") in call_params
     assert ("context_codes[]", "course_2") in call_params
+
+
+@patch("canvas_client.requests.get")
+def test_get_schedule_uses_user_timezone_for_time(mock_get):
+    """Times display in the user's timezone, not the server's."""
+    mock_get.return_value.json.return_value = [
+        {"id": "20", "title": "English", "start_at": "2026-04-24T16:00:00Z",
+         "location_name": "", "description": ""},
+    ]
+    mock_get.return_value.raise_for_status = MagicMock()
+
+    client = make_client()
+    # UTC-7: 16:00Z = 9:00 AM local
+    schedule = client.get_schedule("2026-04-24", ["1"], tzoffset=420)
+    assert schedule[0]["time"] == "9:00 AM"
 
 
 @patch("canvas_client.requests.get")
@@ -107,6 +126,46 @@ def test_get_schedule_extracts_zoom_from_description(mock_get):
     schedule = client.get_schedule("2026-04-24", ["1"])
 
     assert schedule[0]["zoom_url"] == "https://zoom.us/j/12345?pwd=abc"
+
+
+@patch("canvas_client.requests.get")
+def test_get_schedule_unescapes_html_entities_in_zoom_url(mock_get):
+    """Canvas HTML descriptions encode & as &amp; — we must unescape before returning."""
+    mock_get.return_value.json.return_value = [
+        {
+            "id": "13",
+            "title": "Math",
+            "start_at": "2026-04-24T16:00:00Z",
+            "location_name": "Room 101",
+            "description": '<a href="https://zoom.us/j/12345?pwd=abc&amp;uname=xyz">Join</a>',
+        }
+    ]
+    mock_get.return_value.raise_for_status = MagicMock()
+
+    client = make_client()
+    schedule = client.get_schedule("2026-04-24", ["1"])
+
+    assert schedule[0]["zoom_url"] == "https://zoom.us/j/12345?pwd=abc&uname=xyz"
+
+
+@patch("canvas_client.requests.get")
+def test_get_schedule_adds_https_to_bare_location_name(mock_get):
+    """location_name may omit the protocol — we prepend https:// so the Join button appears."""
+    mock_get.return_value.json.return_value = [
+        {
+            "id": "14",
+            "title": "Science",
+            "start_at": "2026-04-24T16:00:00Z",
+            "location_name": "zoom.us/j/99999",
+            "description": "",
+        }
+    ]
+    mock_get.return_value.raise_for_status = MagicMock()
+
+    client = make_client()
+    schedule = client.get_schedule("2026-04-24", ["1"])
+
+    assert schedule[0]["zoom_url"] == "https://zoom.us/j/99999"
 
 
 @patch("canvas_client.requests.get")
@@ -243,3 +302,161 @@ def test_get_missing_assignments_uses_student_id(mock_get):
         params={"per_page": 50},
         timeout=10,
     )
+
+
+from datetime import date
+from canvas_client import classify_task_prefix, extract_class_time, parse_week_range
+
+
+def test_classify_task_prefix_due():
+    assert classify_task_prefix("🗓️ Due Today: W01 - It's In The Syllabus") == ("due", False)
+
+def test_classify_task_prefix_start_and_continue():
+    assert classify_task_prefix("Start:  6W01 - Fall i-Ready Reading Diagnostic") == ("start", False)
+    assert classify_task_prefix("Continue: 6W01 - Fall i-Ready Reading Diagnostic") == ("continue", False)
+
+def test_classify_task_prefix_optional():
+    assert classify_task_prefix("🌀 Optional: 6 - Class Name Suggestions") == ("other", True)
+
+def test_classify_task_prefix_reading_and_reminder():
+    assert classify_task_prefix("📖 Independent Reading: Read for at least 20 minutes.") == ("reading", False)
+    assert classify_task_prefix("⚠️ Reminder: Select a novel for daily independent reading.") == ("reminder", False)
+
+def test_classify_task_prefix_other():
+    assert classify_task_prefix("Live Class Recordings & Weekly Assignments") == ("other", False)
+
+def test_extract_class_time_variants():
+    assert extract_class_time("Attend: Live Class @ 10am.") == "10:00 AM"
+    assert extract_class_time("Attend Live Class @ 10 am.") == "10:00 AM"
+    assert extract_class_time("Live Class @ 9:30am") == "9:30 AM"
+    assert extract_class_time("Attend Live Class @ 1 pm") == "1:00 PM"
+
+def test_extract_class_time_missing():
+    assert extract_class_time("Attend: Live Class") == ""
+
+def test_parse_week_range_ok():
+    assert parse_week_range("6W01 --> 09/07 - 09/11 - Humanities Homepage", date(2026, 9, 8)) == (date(2026, 9, 7), date(2026, 9, 11))
+
+def test_parse_week_range_none():
+    assert parse_week_range("Pod Squad Homepage", date(2026, 9, 8)) is None
+
+def test_parse_week_range_year_boundary():
+    assert parse_week_range("W18 12/29 - 01/02 Home", date(2026, 12, 30)) == (date(2026, 12, 29), date(2027, 1, 2))
+
+
+import os
+from canvas_client import parse_homepage_day
+
+FIXTURE = os.path.join(os.path.dirname(__file__), "fixtures", "homepage_sample.html")
+
+def _body():
+    with open(FIXTURE) as f:
+        return f.read()
+
+def test_parse_homepage_day_tuesday_live_class_and_tasks():
+    r = parse_homepage_day(_body(), 1)  # Tuesday -> #tab2
+    assert r["live_class"] == {"title": "Live Class", "time": "10:00 AM"}
+    titles = [(t["raw_title"], t["type_label"], t["optional"], t["item_id"]) for t in r["tasks"]]
+    assert ("6W01 - Fall i-Ready Reading Diagnostic", "start", False, "2011877") in titles
+    assert ("6 - Class Name Suggestions", "other", True, "2011879") in titles
+    # the "Need more help?" prose line is not a task
+    assert all("Need more help" not in t["raw_title"] for t in r["tasks"])
+
+def test_parse_homepage_day_wednesday_due_and_reminder():
+    r = parse_homepage_day(_body(), 2)  # Wednesday -> #tab3
+    assert r["live_class"] is None
+    labels = {t["type_label"] for t in r["tasks"]}
+    assert labels == {"due", "reminder"}
+    due = next(t for t in r["tasks"] if t["type_label"] == "due")
+    assert due["item_id"] == "2011878"
+    reminder = next(t for t in r["tasks"] if t["type_label"] == "reminder")
+    assert reminder["item_id"] is None  # reminder has no module link
+
+def test_parse_homepage_day_monday_no_tasks():
+    r = parse_homepage_day(_body(), 0)
+    assert r == {"live_class": None, "tasks": []}
+
+def test_parse_homepage_day_weekend_empty():
+    assert parse_homepage_day(_body(), 5) == {"live_class": None, "tasks": []}
+
+def test_parse_homepage_day_none_body():
+    assert parse_homepage_day(None, 1) == {"live_class": None, "tasks": []}
+
+
+from canvas_client import enrich_tasks
+
+def test_enrich_tasks_marks_assignment_submittable():
+    tasks = [{"raw_title": "i-Ready", "url": "u1", "item_id": "2011877", "type_label": "start", "optional": False}]
+    module_map = {"2011877": {"type": "Assignment", "content_id": 771602, "title": "i-Ready", "due_at": None, "points": 15}}
+    out = enrich_tasks(tasks, module_map)
+    assert out == [{
+        "title": "i-Ready", "url": "u1", "type_label": "start", "optional": False,
+        "submittable": True, "content_id": "771602",
+        "submitted": False, "graded": False, "grade": None,
+    }]
+
+def test_enrich_tasks_page_not_submittable():
+    tasks = [{"raw_title": "Resources", "url": "u2", "item_id": "999", "type_label": "other", "optional": False}]
+    module_map = {"999": {"type": "Page", "content_id": None, "title": "Resources", "due_at": None, "points": None}}
+    out = enrich_tasks(tasks, module_map)
+    assert out[0]["submittable"] is False
+    assert out[0]["content_id"] is None
+
+def test_enrich_tasks_unknown_item_not_submittable():
+    tasks = [{"raw_title": "Reminder", "url": None, "item_id": None, "type_label": "reminder", "optional": False}]
+    out = enrich_tasks(tasks, {})
+    assert out[0]["submittable"] is False
+    assert out[0]["title"] == "Reminder"
+
+
+@patch("canvas_client.requests.get")
+def test_get_front_page_returns_title_and_body(mock_get):
+    mock_get.return_value.json.return_value = {"title": "W01 09/07 - 09/11 Home", "body": "<div id='tab1'></div>"}
+    mock_get.return_value.raise_for_status = MagicMock()
+    client = make_client()
+    fp = client.get_front_page("11902")
+    assert fp == {"title": "W01 09/07 - 09/11 Home", "body": "<div id='tab1'></div>"}
+    # cached: second call makes no new request
+    client.get_front_page("11902")
+    assert mock_get.call_count == 1
+
+@patch("canvas_client.requests.get")
+def test_get_front_page_none_on_error(mock_get):
+    import requests as req
+    mock_get.return_value.raise_for_status.side_effect = req.HTTPError("404")
+    client = make_client()
+    assert client.get_front_page("11902") is None
+
+@patch("canvas_client.requests.get")
+def test_get_module_items_map_builds_index(mock_get):
+    mock_get.return_value.json.return_value = [
+        {"id": 1, "name": "M1", "items": [
+            {"id": 2011877, "type": "Assignment", "content_id": 771602, "title": "i-Ready",
+             "content_details": {"due_at": "2026-09-12T06:59:59Z", "points_possible": 15.0}},
+            {"id": 2011909, "type": "Page", "content_id": None, "title": "Resources", "content_details": {}},
+        ]},
+    ]
+    mock_get.return_value.raise_for_status = MagicMock()
+    mock_get.return_value.headers = {"Link": ""}
+    client = make_client()
+    m = client.get_module_items_map("11902")
+    assert m["2011877"] == {"type": "Assignment", "content_id": 771602, "title": "i-Ready",
+                            "due_at": "2026-09-12T06:59:59Z", "points": 15.0}
+    assert m["2011909"]["type"] == "Page"
+
+@patch("canvas_client.requests.get")
+def test_get_zoom_url_finds_zoom_tab(mock_get):
+    mock_get.return_value.json.return_value = [
+        {"label": "Home", "full_url": "https://school.instructure.com/courses/11902"},
+        {"label": "Zoom", "full_url": "https://school.instructure.com/courses/11902/external_tools/1039"},
+    ]
+    mock_get.return_value.raise_for_status = MagicMock()
+    client = make_client()
+    assert client.get_zoom_url("11902") == "https://school.instructure.com/courses/11902/external_tools/1039"
+
+@patch("canvas_client.requests.get")
+def test_get_zoom_url_none_when_absent(mock_get):
+    mock_get.return_value.json.return_value = [{"label": "Home", "full_url": "x"}]
+    mock_get.return_value.raise_for_status = MagicMock()
+    client = make_client()
+    assert client.get_zoom_url("11902") is None

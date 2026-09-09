@@ -1,17 +1,85 @@
 import json
 import os
+import uuid
 from concurrent.futures import ThreadPoolExecutor
 from datetime import date as date_module, datetime, timedelta, timezone
 
 from dotenv import load_dotenv
 from flask import Flask, jsonify, render_template, request
 
-from canvas_client import CanvasClient
+from canvas_client import CanvasClient, parse_week_range, parse_homepage_day, enrich_tasks
 
 load_dotenv()
 
 _DATA_DIR = os.getenv("DATA_DIR", os.path.dirname(__file__))
 IGNORE_FILE = os.path.join(_DATA_DIR, "ignore.json")
+SCHEDULE_CONFIG_FILE = os.path.join(_DATA_DIR, "schedule_config.json")
+
+
+def _load_schedule_config():
+    try:
+        with open(SCHEDULE_CONFIG_FILE) as f:
+            return json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError):
+        return []
+
+
+def _save_schedule_config(entries):
+    os.makedirs(os.path.dirname(SCHEDULE_CONFIG_FILE), exist_ok=True)
+    with open(SCHEDULE_CONFIG_FILE, "w") as f:
+        json.dump(entries, f, indent=2)
+
+
+def _time_sort_key(time_str):
+    try:
+        t = datetime.strptime(time_str, "%I:%M %p")
+        return t.hour * 60 + t.minute
+    except ValueError:
+        return float("inf")
+
+
+def _short_course_name(name):
+    return (name or "").split(" Q1")[0].strip() or (name or "")
+
+
+def _course_homepage(cid, weekday, ref_date):
+    try:
+        fp = canvas_client.get_front_page(cid)
+        if not fp:
+            return None
+        week = parse_week_range(fp["title"], ref_date)
+        range_found = week is not None
+        in_range = (not range_found) or (week[0] <= ref_date <= week[1])
+        if not in_range:
+            return {"range_found": True, "in_range": False, "live_class": None, "tasks": [], "zoom_url": None}
+        parsed = parse_homepage_day(fp["body"], weekday)
+        module_map = canvas_client.get_module_items_map(cid)
+        tasks = enrich_tasks(parsed["tasks"], module_map)
+        zoom = canvas_client.get_zoom_url(cid) if parsed["live_class"] else None
+        return {
+            "range_found": range_found,
+            "in_range": True,
+            "live_class": parsed["live_class"],
+            "tasks": tasks,
+            "zoom_url": zoom,
+        }
+    except Exception as exc:
+        app.logger.warning("homepage failed for course %s: %s", cid, exc)
+        return None
+
+
+def _resolve_task_status(item, course_id):
+    try:
+        s = canvas_client.get_submission_details(course_id, item["content_id"])
+        state = s.get("workflow_state", "unsubmitted")
+        item["submitted"] = (
+            state in ("submitted", "graded", "pending_review", "excused")
+            or bool(s.get("submitted_at"))
+        )
+        item["graded"] = state == "graded" or bool(s.get("grade"))
+        item["grade"] = s.get("grade")
+    except Exception as exc:
+        app.logger.warning("task status failed for %s/%s: %s", course_id, item.get("content_id"), exc)
 
 
 def _load_ignore():
@@ -51,20 +119,21 @@ def api_day():
 
         tz = timezone(timedelta(minutes=-tzoffset))
         d = date_module.fromisoformat(date_str)
+        weekday = d.weekday()
         today_start_utc = datetime(d.year, d.month, d.day, tzinfo=tz).astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-        # +2h buffer so assignments stored in PST still appear on PDT days
         today_end_utc = (datetime(d.year, d.month, d.day, 23, 59, 59, tzinfo=tz).astimezone(timezone.utc) + timedelta(hours=2)).strftime("%Y-%m-%dT%H:%M:%SZ")
-
-        with ThreadPoolExecutor(max_workers=2) as pool:
-            schedule_fut = pool.submit(canvas_client.get_schedule, date_str, course_ids)
-            assignments_fut = pool.submit(canvas_client.get_assignments_due, date_str, course_ids, tzoffset=tzoffset)
-            schedule = schedule_fut.result()
-            raw_assignments = assignments_fut.result()
 
         ignore = _load_ignore()
         ignored_aids = set(ignore.get("assignment_ids", []))
         ignored_cids = set(ignore.get("course_ids", []))
 
+        with ThreadPoolExecutor(max_workers=8) as pool:
+            assignments_fut = pool.submit(canvas_client.get_assignments_due, date_str, course_ids, tzoffset=tzoffset)
+            homepage_futs = {cid: pool.submit(_course_homepage, cid, weekday, d) for cid in course_ids}
+            raw_assignments = assignments_fut.result()
+            homepages = {cid: fut.result() for cid, fut in homepage_futs.items()}
+
+        # assignments (unchanged logic)
         seen_ids = set()
         assignments = []
         for a in raw_assignments:
@@ -74,7 +143,7 @@ def api_day():
                 continue
             seen_ids.add(a["id"])
             due = a["due_at"] or ""
-            if due <= today_end_utc:  # today and past; no future assignments
+            if due <= today_end_utc:
                 assignments.append({
                     "id": a["id"],
                     "course_id": a["course_id"],
@@ -83,11 +152,60 @@ def api_day():
                     "due_at": a["due_at"],
                     "points_possible": a["points_possible"],
                 })
-
         assignments.sort(key=lambda a: a["due_at"] or "")
+
+        # homepage availability (all courses share the same real-world week)
+        range_results = [r for r in homepages.values() if r and r["range_found"]]
+        homepage_available = (not range_results) or any(r["in_range"] for r in range_results)
+
+        # schedule + tasks from homepages
+        schedule = []
+        tasks = []
+        for cid in course_ids:
+            if cid in ignored_cids:
+                continue
+            r = homepages.get(cid)
+            if not r or not r["in_range"]:
+                continue
+            if r["live_class"]:
+                schedule.append({
+                    "time": r["live_class"]["time"],
+                    "title": f'{_short_course_name(course_map.get(cid, ""))} — Live Class',
+                    "zoom_url": r["zoom_url"],
+                })
+            if r["tasks"]:
+                tasks.append({
+                    "course_id": cid,
+                    "course_name": course_map.get(cid, ""),
+                    "items": r["tasks"],
+                })
+
+        # resolve submission status for submittable tasks
+        pairs = [(it, block["course_id"]) for block in tasks for it in block["items"]
+                 if it["submittable"] and it["content_id"]]
+        if pairs:
+            canvas_client._resolve_student_id()
+            with ThreadPoolExecutor(max_workers=8) as pool:
+                list(pool.map(lambda p: _resolve_task_status(p[0], p[1]), pairs))
+
+        # manual schedule config entries
+        day_abbr = d.strftime("%a")
+        for entry in _load_schedule_config():
+            if day_abbr in entry.get("days", []):
+                schedule.append({
+                    "time": entry.get("time", ""),
+                    "title": entry.get("title", ""),
+                    "zoom_url": entry.get("zoom_url") or None,
+                    "manual": True,
+                    "manual_id": entry.get("id", ""),
+                })
+        schedule.sort(key=lambda e: _time_sort_key(e.get("time", "")))
+
         return jsonify({
             "date": date_str,
+            "homepage_available": homepage_available,
             "schedule": schedule,
+            "tasks": tasks,
             "assignments": assignments,
             "today_start_utc": today_start_utc,
         })
@@ -159,6 +277,40 @@ def api_missing():
         return jsonify({"error": str(exc)}), 500
 
 
+@app.route("/api/schedule-config", methods=["GET"])
+def api_schedule_config_get():
+    return jsonify(_load_schedule_config())
+
+
+@app.route("/api/schedule-config", methods=["POST"])
+def api_schedule_config_add():
+    body = request.get_json() or {}
+    title = body.get("title", "").strip()
+    time_str = body.get("time", "").strip()
+    days = body.get("days") or []
+    zoom_url = body.get("zoom_url", "").strip()
+    if not title or not time_str or not days:
+        return jsonify({"error": "title, time, and days are required"}), 400
+    entry = {
+        "id": str(uuid.uuid4()),
+        "title": title,
+        "time": time_str,
+        "days": days,
+        "zoom_url": zoom_url or None,
+    }
+    entries = _load_schedule_config()
+    entries.append(entry)
+    _save_schedule_config(entries)
+    return jsonify(entry), 201
+
+
+@app.route("/api/schedule-config/<entry_id>", methods=["DELETE"])
+def api_schedule_config_remove(entry_id):
+    entries = _load_schedule_config()
+    _save_schedule_config([e for e in entries if e.get("id") != entry_id])
+    return jsonify({"ok": True})
+
+
 @app.route("/api/ignore", methods=["POST"])
 def api_ignore_add():
     body = request.get_json() or {}
@@ -186,6 +338,53 @@ def api_ignore_remove():
     data[key] = [x for x in data[key] if x != id_]
     _save_ignore(data)
     return jsonify({"ok": True})
+
+
+@app.route("/api/debug/schedule")
+def api_debug_schedule():
+    date_str = request.args.get("date", date_module.today().isoformat())
+    tzoffset = int(request.args.get("tzoffset", 0))
+    try:
+        from datetime import timezone as _tz, timedelta as _td
+        tz = _tz(_td(minutes=-tzoffset))
+        d = date_module.fromisoformat(date_str)
+        start_utc = datetime(d.year, d.month, d.day, tzinfo=tz).astimezone(_tz.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        end_utc = datetime(d.year, d.month, d.day, 23, 59, 59, tzinfo=tz).astimezone(_tz.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        courses = [c for c in canvas_client.get_active_courses() if c.get("name")]
+        course_ids = [str(c["id"]) for c in courses]
+        student_id = canvas_client._resolve_student_id()
+
+        course_map = {str(c["id"]): c["name"] for c in courses}
+
+        date_params = [("start_date", start_utc), ("end_date", end_utc), ("per_page", "50")]
+        ctx_courses = [("context_codes[]", f"course_{cid}") for cid in course_ids]
+        ctx_user = [("context_codes[]", f"user_{student_id}")]
+
+        typed_events   = canvas_client._get("/api/v1/calendar_events", [("type", "event")]   + date_params + ctx_courses)
+        untyped_events = canvas_client._get("/api/v1/calendar_events", date_params + ctx_courses)
+        user_events    = canvas_client._get("/api/v1/calendar_events", [("type", "event")]   + date_params + ctx_user)
+
+        def summarize(e):
+            return {
+                "title": e.get("title"),
+                "start_at": e.get("start_at"),
+                "context_code": e.get("context_code"),
+                "type": e.get("type"),
+                "description_snippet": (e.get("description") or "")[:300],
+            }
+
+        return jsonify({
+            "query": {"start_date": start_utc, "end_date": end_utc, "student_id": student_id},
+            "courses": [{"id": cid, "name": course_map.get(cid, "?")} for cid in course_ids],
+            "typed_event_count": len(typed_events),
+            "untyped_event_count": len(untyped_events),
+            "user_event_count": len(user_events),
+            "typed_events": [summarize(e) for e in typed_events],
+            "untyped_events": [summarize(e) for e in untyped_events],
+            "user_events": [summarize(e) for e in user_events],
+        })
+    except Exception as exc:
+        return jsonify({"error": str(exc)}), 500
 
 
 @app.route("/api/debug/assignments")
