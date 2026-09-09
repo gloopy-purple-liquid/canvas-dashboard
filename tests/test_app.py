@@ -152,6 +152,32 @@ def test_api_day_homepage_unavailable_for_other_week(mock_client):
 
 
 @patch("app.canvas_client")
+def test_api_day_survives_unparseable_homepage_week_range(mock_client):
+    # A front-page title with an invalid date (month 13) makes the real
+    # parse_week_range raise ValueError inside _course_homepage. That must
+    # be isolated to this one course, not blow up the whole /api/day request.
+    mock_client.get_active_courses.return_value = [{"id": 1, "name": "Broken Course"}]
+    mock_client.get_assignments_due.return_value = [
+        {"id": "456", "course_id": "1", "title": "Still Due HW",
+         "due_at": "2026-04-22T23:59:00Z", "points_possible": 100},
+    ]
+    mock_client.get_front_page.return_value = {"title": "W01 13/45 - 13/46 Home", "body": "<html/>"}
+    mock_client.get_module_items_map.return_value = {}
+    mock_client.get_zoom_url.return_value = None
+
+    flask_app.config["TESTING"] = True
+    with flask_app.test_client() as c:
+        resp = c.get("/api/day?date=2026-04-22")
+
+    assert resp.status_code == 200
+    data = resp.get_json()
+    assert data["schedule"] == []
+    assert data["tasks"] == []
+    assert len(data["assignments"]) == 1
+    assert data["assignments"][0]["title"] == "Still Due HW"
+
+
+@patch("app.canvas_client")
 def test_api_missing_returns_missing_assignments(mock_client):
     mock_client.get_active_courses.return_value = [
         {"id": 1, "name": "US History"}

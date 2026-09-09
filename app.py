@@ -43,25 +43,29 @@ def _short_course_name(name):
 
 
 def _course_homepage(cid, weekday, ref_date):
-    fp = canvas_client.get_front_page(cid)
-    if not fp:
+    try:
+        fp = canvas_client.get_front_page(cid)
+        if not fp:
+            return None
+        week = parse_week_range(fp["title"], ref_date)
+        range_found = week is not None
+        in_range = (not range_found) or (week[0] <= ref_date <= week[1])
+        if not in_range:
+            return {"range_found": True, "in_range": False, "live_class": None, "tasks": [], "zoom_url": None}
+        parsed = parse_homepage_day(fp["body"], weekday)
+        module_map = canvas_client.get_module_items_map(cid)
+        tasks = enrich_tasks(parsed["tasks"], module_map)
+        zoom = canvas_client.get_zoom_url(cid) if parsed["live_class"] else None
+        return {
+            "range_found": range_found,
+            "in_range": True,
+            "live_class": parsed["live_class"],
+            "tasks": tasks,
+            "zoom_url": zoom,
+        }
+    except Exception as exc:
+        app.logger.warning("homepage failed for course %s: %s", cid, exc)
         return None
-    week = parse_week_range(fp["title"], ref_date)
-    range_found = week is not None
-    in_range = (not range_found) or (week[0] <= ref_date <= week[1])
-    if not in_range:
-        return {"range_found": True, "in_range": False, "live_class": None, "tasks": [], "zoom_url": None}
-    parsed = parse_homepage_day(fp["body"], weekday)
-    module_map = canvas_client.get_module_items_map(cid)
-    tasks = enrich_tasks(parsed["tasks"], module_map)
-    zoom = canvas_client.get_zoom_url(cid) if parsed["live_class"] else None
-    return {
-        "range_found": range_found,
-        "in_range": True,
-        "live_class": parsed["live_class"],
-        "tasks": tasks,
-        "zoom_url": zoom,
-    }
 
 
 def _resolve_task_status(item, course_id):
