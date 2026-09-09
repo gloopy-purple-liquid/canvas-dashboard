@@ -6,7 +6,7 @@ from app import app as flask_app
 
 @patch("app.canvas_client")
 def test_api_day_returns_schedule_and_assignments(mock_client):
-    mock_client.get_active_courses.return_value = [{"id": 1, "name": "Mathematics 6 Q1-Q1"}]
+    mock_client.get_active_courses.return_value = [{"id": 1, "name": "Mathematics 6 Q1-Q1-1(A-E) 7-8(A,C,E)-Jones"}]
     mock_client.get_assignments_due.return_value = [
         {"id": "456", "course_id": "1", "title": "Math HW #12",
          "due_at": "2026-04-22T23:59:00Z", "points_possible": 100},
@@ -215,3 +215,27 @@ def test_time_sort_key_sorts_unparseable_last():
     from app import _time_sort_key
     assert _time_sort_key("") > _time_sort_key("11:00 AM")
     assert _time_sort_key("not a time") > _time_sort_key("12:00 AM")
+
+
+def test_short_course_name_trims_section_codes():
+    from app import _short_course_name
+    cases = {
+        "Humanities 6 Q1-Q1-1(A-E) 5-6(B,D)-Smith": "Humanities 6",
+        "Math 6 Q1-Q1-1(A-E) 7-8(A,C,E)-Jones": "Math 6",
+        "Science 6 Q1-Q1-1(A-E) 5-6(A,C)-Lee": "Science 6",
+        "MS Advisory 6 Q1-Q1-1(A-E) 10-11(A)-Lee": "MS Advisory 6",
+        "Physical Education 6 Q1-Q1-1(A-E) 3-4(E)-Davis": "Physical Education 6",
+        # code glued to the name with a hyphen
+        "MS Pod Squad-26-27-1(A-E) 3-4(C)-Kim": "MS Pod Squad",
+        "MS LAUNCH-Q1-1(A-E) 3-4(D)-Park": "MS LAUNCH",
+        # code separated by a space, multi-word name
+        "BOOST MS Skills for Success A-S1-1(A-E) 2(A,D)-Lee": "BOOST MS Skills for Success",
+    }
+    for full, expected in cases.items():
+        assert _short_course_name(full) == expected, full
+
+
+def test_short_course_name_returns_name_without_section_marker():
+    from app import _short_course_name
+    assert _short_course_name("Algebra I") == "Algebra I"
+    assert _short_course_name("") == ""

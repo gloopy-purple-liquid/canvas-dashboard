@@ -1,5 +1,6 @@
 import json
 import os
+import re
 import uuid
 from concurrent.futures import ThreadPoolExecutor
 from datetime import date as date_module, datetime, timedelta, timezone
@@ -39,7 +40,23 @@ def _time_sort_key(time_str):
 
 
 def _short_course_name(name):
-    return (name or "").split(" Q1")[0].strip() or (name or "")
+    # Course names carry a section/term code before a "(A-E)" grade-band marker,
+    # e.g. "Humanities 6 Q1-Q1-1(A-E) 5-6(B,D)-Smith". Strip everything from the
+    # code onward. The code is sometimes space-separated ("6 Q1-Q1-1"), sometimes
+    # glued to the name with a hyphen ("Pod Squad-26-27-1", "LAUNCH-Q1-1").
+    name = (name or "").strip()
+    marker = re.search(r"\([A-Za-z]-[A-Za-z]\)", name)
+    if not marker:
+        return name
+    head = name[: marker.start()].rstrip()
+    sp = head.rfind(" ")
+    token = head[sp + 1:]
+    if re.match(r"(Q\d|S\d|A-|A\d|\d)", token):
+        cut = sp + 1  # the whole trailing token is the code
+    else:
+        hyphen = re.search(r"-(?=\d|Q\d|S\d)", token)  # code glued via hyphen
+        cut = (sp + 1 + hyphen.start()) if hyphen else len(head)
+    return head[:cut].strip() or name
 
 
 def _course_homepage(cid, weekday, ref_date):
