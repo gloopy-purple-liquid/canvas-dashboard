@@ -340,6 +340,9 @@ def test_parse_week_range_ok():
 def test_parse_week_range_none():
     assert parse_week_range("Pod Squad Homepage", date(2026, 9, 8)) is None
 
+def test_parse_week_range_year_boundary():
+    assert parse_week_range("W18 12/29 - 01/02 Home", date(2026, 12, 30)) == (date(2026, 12, 29), date(2027, 1, 2))
+
 
 import os
 from canvas_client import parse_homepage_day

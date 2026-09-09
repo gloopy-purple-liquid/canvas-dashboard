@@ -35,7 +35,7 @@ def _time_sort_key(time_str):
         t = datetime.strptime(time_str, "%I:%M %p")
         return t.hour * 60 + t.minute
     except ValueError:
-        return -1
+        return float("inf")
 
 
 def _short_course_name(name):

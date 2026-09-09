@@ -120,6 +120,8 @@ def parse_week_range(title, ref_date):
     y = ref_date.year
     start = _date(y, int(m.group(1)), int(m.group(2)))
     end = _date(y, int(m.group(3)), int(m.group(4)))
+    if end < start:
+        end = _date(end.year + 1, end.month, end.day)
     return (start, end)
 
 

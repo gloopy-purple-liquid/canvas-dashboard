@@ -209,3 +209,9 @@ def test_api_missing_returns_empty_list_when_none(mock_client):
 
     data = resp.get_json()
     assert data["missing"] == []
+
+
+def test_time_sort_key_sorts_unparseable_last():
+    from app import _time_sort_key
+    assert _time_sort_key("") > _time_sort_key("11:00 AM")
+    assert _time_sort_key("not a time") > _time_sort_key("12:00 AM")
