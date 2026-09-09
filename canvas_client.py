@@ -36,13 +36,35 @@ def classify_task_prefix(text):
 
 
 def extract_class_time(text):
-    m = re.search(r'@\s*(\d{1,2})(?::(\d{2}))?\s*([ap])\.?\s*m\.?', text, re.I)
+    # Accepts "@ 10am", "at 9:00 AM", "10:00 am", "@ 11 A.M." — the "@"/"at"
+    # prefix is optional; the am/pm suffix is required so plain numbers
+    # (e.g. "20 minutes") don't match.
+    m = re.search(r'(?:@|\bat\b)?\s*(\d{1,2})(?::(\d{2}))?\s*([ap])\.?\s*m\.?', text, re.I)
     if not m:
         return ""
     hour = int(m.group(1))
     minute = m.group(2) or "00"
     ampm = m.group(3).upper() + "M"
     return f"{hour}:{minute} {ampm}"
+
+
+def _is_live_class(text):
+    # Teachers phrase the synchronous class differently across courses:
+    #   "Attend: Live Class @ 10am"        (live + attend)
+    #   "Attend POD Squad at 9:00 AM..."   (attend + time, no "live class")
+    #   "Come to Live Class at 10:00 am"   (live + time, no "attend")
+    # Treat a line as the live class when it names it outright (live + attend),
+    # or when it carries a class time alongside an attend/live/join-Zoom signal.
+    # Requiring a time in the looser cases avoids matching untimed checklist
+    # lines like "Complete the Daily Big 3: Attend Classes".
+    low = text.lower()
+    has_time = extract_class_time(text) != ""
+    live = "live class" in low
+    attend = "attend" in low
+    zoom = "zoom" in low
+    return (live and attend) or (
+        has_time and (live or attend or (zoom and "join" in low))
+    )
 
 
 def _clean_text(fragment):
@@ -66,7 +88,7 @@ def parse_homepage_day(body, weekday):
         text = _clean_text(li)
         if not text:
             continue
-        if "live class" in text.lower() and "attend" in text.lower():
+        if _is_live_class(text):
             if result["live_class"] is None:
                 result["live_class"] = {"title": "Live Class", "time": extract_class_time(text)}
             continue

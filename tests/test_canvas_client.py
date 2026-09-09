@@ -460,3 +460,51 @@ def test_get_zoom_url_none_when_absent(mock_get):
     mock_get.return_value.raise_for_status = MagicMock()
     client = make_client()
     assert client.get_zoom_url("11902") is None
+
+
+# --- live-class detection across varied teacher phrasings (bugfix) ---
+
+def test_extract_class_time_accepts_at_and_bare_times():
+    assert extract_class_time("Attend POD Squad at 9:00 AM. Join via Zoom") == "9:00 AM"
+    assert extract_class_time("Come to Live Class at 10:00 am.") == "10:00 AM"
+    assert extract_class_time("ATTEND LIVE CLASS @ 11 A.M.") == "11:00 AM"
+
+def test_parse_homepage_day_detects_attend_without_live_class_keyword():
+    # Pod Squad style: "attend" + a time + Zoom, but no literal "live class"
+    body = ('<div id="tab1" class="tab-content"><ul>'
+            '<li>Attend POD Squad at 9:00 AM. Join via the Zoom Link</li>'
+            '</ul></div>')
+    r = parse_homepage_day(body, 0)
+    assert r["live_class"] == {"title": "Live Class", "time": "9:00 AM"}
+    assert r["tasks"] == []
+
+def test_parse_homepage_day_detects_live_class_without_attend_keyword():
+    # Science style: "live class" + a time, but no "attend"
+    body = ('<div id="tab1" class="tab-content"><ul>'
+            '<li>Task 1: Come to Live Class at 10:00 am. Intros and skills.</li>'
+            '</ul></div>')
+    r = parse_homepage_day(body, 0)
+    assert r["live_class"] == {"title": "Live Class", "time": "10:00 AM"}
+
+def test_parse_homepage_day_attend_classes_checklist_is_not_live_class():
+    # "Attend Classes" checklist item with NO time is not the live class;
+    # it links to a module item, so it stays a task.
+    body = ('<div id="tab1" class="tab-content"><ul>'
+            '<li>Complete the Daily Big 3: '
+            '<a href="https://school.instructure.com/courses/11386/modules/items/500">Attend Classes</a></li>'
+            '</ul></div>')
+    r = parse_homepage_day(body, 0)
+    assert r["live_class"] is None
+    assert len(r["tasks"]) == 1
+    assert r["tasks"][0]["item_id"] == "500"
+
+def test_parse_homepage_day_timed_task_without_attend_is_not_live_class():
+    # A task that merely mentions a time (no attend/live/zoom-join) stays a task.
+    body = ('<div id="tab1" class="tab-content"><ul>'
+            '<li>\U0001f5d3️ Due Today: '
+            '<a href="https://school.instructure.com/courses/1/modules/items/77">Quiz opens at 3:00 pm</a></li>'
+            '</ul></div>')
+    r = parse_homepage_day(body, 0)
+    assert r["live_class"] is None
+    assert len(r["tasks"]) == 1
+    assert r["tasks"][0]["type_label"] == "due"
