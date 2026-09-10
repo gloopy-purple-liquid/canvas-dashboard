@@ -702,22 +702,33 @@
   }
 
   async function autoRefresh() {
-    const btns = [...document.querySelectorAll('#assignments-list .hide-btn')];
-    if (!btns.length) return;
-    const items = btns.map(b => ({ id: b.dataset.aid, course_id: b.dataset.cid }));
+    // Silent refresh (no spinner / no clear): re-pull schedule, tasks, missing,
+    // and assignment submission status for the currently viewed day.
     try {
-      const [subRes, missingRes] = await Promise.all([
-        fetch('/api/submissions', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(items),
-        }),
+      const tzoffset = new Date().getTimezoneOffset();
+      const [dayRes, missingRes] = await Promise.all([
+        fetch(`/api/day?date=${currentDate}&tzoffset=${tzoffset}`),
         fetch('/api/missing'),
       ]);
-      const subs = await subRes.json();
+      const day = await dayRes.json();
       const missingData = await missingRes.json();
-      if (Array.isArray(subs)) applySubmissions(subs, currentTodayStartUtc);
+      if (day.error) return;
+
+      renderSchedule(day.schedule || []);
+      renderTasks(day.tasks || [], day.homepage_available !== false);
       if (missingData.missing) renderMissing(missingData.missing);
+
+      currentTodayStartUtc = day.today_start_utc || '';
+      const assignments = day.assignments || [];
+      if (assignments.length) {
+        const subRes = await fetch('/api/submissions', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(assignments.map(a => ({ id: a.id, course_id: a.course_id }))),
+        });
+        const subs = await subRes.json();
+        if (Array.isArray(subs)) applySubmissions(subs, currentTodayStartUtc);
+      }
       const t = new Date();
       document.getElementById('last-updated').textContent =
         ` · ${t.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}`;
