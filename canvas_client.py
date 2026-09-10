@@ -59,7 +59,7 @@ def _is_live_class(text):
     # lines like "Complete the Daily Big 3: Attend Classes".
     low = text.lower()
     has_time = extract_class_time(text) != ""
-    live = "live class" in low
+    live = any(k in low for k in ("live class", "live lesson", "live session"))
     attend = "attend" in low
     zoom = "zoom" in low
     return (live and attend) or (
