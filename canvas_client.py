@@ -67,6 +67,21 @@ def _is_live_class(text):
     )
 
 
+def _extract_range_start_time(text):
+    # Fallback for a class time given as a bare hour range with no am/pm,
+    # e.g. "9-10" or "9:30-10:30". Assume AM (classes here run mornings) and
+    # return the start time. Only called for a line already identified as a
+    # live class, so it never influences detection of other lines.
+    m = re.search(r'\b(\d{1,2})(?::(\d{2}))?\s*[-–]\s*\d{1,2}\b', text)
+    if not m:
+        return ""
+    hour = int(m.group(1))
+    if hour < 1 or hour > 12:
+        return ""
+    minute = m.group(2) or "00"
+    return f"{hour}:{minute} AM"
+
+
 def _clean_text(fragment):
     text = re.sub(r"<[^>]+>", " ", fragment)
     text = html.unescape(text)
@@ -90,7 +105,8 @@ def parse_homepage_day(body, weekday):
             continue
         if _is_live_class(text):
             if result["live_class"] is None:
-                result["live_class"] = {"title": "Live Class", "time": extract_class_time(text)}
+                time = extract_class_time(text) or _extract_range_start_time(text)
+                result["live_class"] = {"title": "Live Class", "time": time}
             continue
         item_m = re.search(r'href="[^"]*?/courses/\d+/modules/items/(\w+)"', li)
         item_id = item_m.group(1) if item_m else None

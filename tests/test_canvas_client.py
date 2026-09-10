@@ -510,14 +510,23 @@ def test_parse_homepage_day_timed_task_without_attend_is_not_live_class():
     assert r["tasks"][0]["type_label"] == "due"
 
 def test_parse_homepage_day_detects_live_lesson_phrasing():
-    # LAUNCH style: "Attend ... live lesson ... zoom"; time is a range with no am/pm
+    # LAUNCH style: "Attend ... live lesson ... zoom"; time is a bare hour range
+    # with no am/pm ("9-10") — parsed as the AM start time (9:00 AM).
     body = ('<div id="tab1" class="tab-content"><ul>'
             '<li>Attend 9-10 live lesson (Recap of the last 2 lessons) '
             '<a href="https://x/rec">click here for recording</a> zoom</li>'
             '</ul></div>')
     r = parse_homepage_day(body, 0)
-    assert r["live_class"] == {"title": "Live Class", "time": ""}
+    assert r["live_class"] == {"title": "Live Class", "time": "9:00 AM"}
     assert r["tasks"] == []
+
+def test_parse_homepage_day_explicit_ampm_beats_range_fallback():
+    # When an am/pm time is present, it is used (range fallback only fills gaps).
+    body = ('<div id="tab1" class="tab-content"><ul>'
+            '<li>Attend live lesson 1-2 block @ 11 A.M. via zoom</li>'
+            '</ul></div>')
+    r = parse_homepage_day(body, 0)
+    assert r["live_class"] == {"title": "Live Class", "time": "11:00 AM"}
 
 def test_parse_homepage_day_live_class_recordings_is_not_live_class():
     # "Live Class Recordings" contains "live class" but is a resource link, not the class
