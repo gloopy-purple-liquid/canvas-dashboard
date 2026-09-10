@@ -83,7 +83,9 @@
 
     .card-sub { font-size: 12px; color: #7f8c8d; margin-top: 2px; }
 
-    .card-comment { font-size: 12px; color: #27ae60; font-style: italic; margin-top: 4px; }
+    .card-comment { display: block; font-size: 12px; color: #27ae60; font-style: italic; margin-top: 4px; }
+    a.card-comment { text-decoration: none; }
+    a.card-comment:hover { text-decoration: underline; }
 
     .card-right { text-align: right; white-space: nowrap; }
 
@@ -441,7 +443,7 @@
         : `<div class="status not-submitted">Not submitted</div><div class="card-sub-due card-sub">${due}</div>`;
 
       return `
-        <div class="card${checking ? ' checking' : ' not-submitted'}" data-due="${esc(a.due_at || '')}">
+        <div class="card${checking ? ' checking' : ' not-submitted'}" data-due="${esc(a.due_at || '')}" data-points="${esc(a.points_possible == null ? '' : String(a.points_possible))}">
           <span class="status-icon${checking ? '' : ' warn'}">${checking ? '' : '!'}</span>
           <div class="card-body">
             <div class="card-title">${esc(a.title)}</div>
@@ -654,7 +656,11 @@
       if (s.submitted && s.graded) {
         icon.className = 'status-icon ok';
         icon.textContent = '✓';
-        right.innerHTML = `<div class="grade">${esc(s.grade)}</div><div class="status submitted">Graded</div>`;
+        const pts = card.dataset.points;
+        const gradeText = (s.score != null && pts)
+          ? `${esc(String(s.score))}/${esc(pts)}`
+          : esc(s.grade);
+        right.innerHTML = `<div class="grade">${gradeText}</div><div class="status submitted">Graded</div>`;
       } else if (s.submitted) {
         icon.className = 'status-icon ok';
         icon.textContent = '✓';
@@ -667,7 +673,13 @@
         right.innerHTML = `<div class="status not-submitted">Not submitted</div>${dueEl ? dueEl.outerHTML : ''}`;
       }
 
-      const comments = (s.comments || []).map(c => `<div class="card-comment">"${esc(c)}"</div>`).join('');
+      const commentsUrl = (s.comments_url && /^https?:\/\//i.test(s.comments_url)) ? s.comments_url : null;
+      const comments = (s.comments || []).map(c => {
+        const inner = `💬 "${esc(c)}"`;
+        return commentsUrl
+          ? `<a class="card-comment" href="${esc(commentsUrl)}" target="_blank" rel="noopener">${inner}</a>`
+          : `<div class="card-comment">${inner}</div>`;
+      }).join('');
       const body = card.querySelector('.card-body');
       body.querySelectorAll('.card-comment').forEach(el => el.remove());
       if (comments) body.insertAdjacentHTML('beforeend', comments);

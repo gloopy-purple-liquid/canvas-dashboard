@@ -236,7 +236,7 @@ def api_submissions():
     if not items:
         return jsonify([])
     try:
-        canvas_client._resolve_student_id()
+        student_id = canvas_client._resolve_student_id()
 
         def _fetch(item):
             try:
@@ -246,17 +246,24 @@ def api_submissions():
                     state in ("submitted", "graded", "pending_review", "excused")
                     or bool(s.get("submitted_at"))
                 )
+                comments = [c["comment"] for c in s.get("submission_comments", [])]
+                comments_url = (
+                    f"{canvas_client.base_url}/courses/{item['course_id']}"
+                    f"/assignments/{item['id']}/submissions/{student_id}"
+                    if comments else None
+                )
                 return {
                     "id": item["id"],
                     "submitted": submitted,
                     "graded": state == "graded" or bool(s.get("grade")),
                     "grade": s.get("grade"),
                     "score": s.get("score"),
-                    "comments": [c["comment"] for c in s.get("submission_comments", [])],
+                    "comments": comments,
+                    "comments_url": comments_url,
                 }
             except Exception as exc:
                 app.logger.warning("submission details failed for %s/%s: %s", item["course_id"], item["id"], exc)
-                return {"id": item["id"], "submitted": False, "graded": False, "grade": None, "score": None, "comments": []}
+                return {"id": item["id"], "submitted": False, "graded": False, "grade": None, "score": None, "comments": [], "comments_url": None}
 
         with ThreadPoolExecutor(max_workers=8) as pool:
             results = list(pool.map(_fetch, items))

@@ -54,6 +54,7 @@ def test_api_day_deduplicates_assignments(mock_client):
 @patch("app.canvas_client")
 def test_api_submissions_returns_details(mock_client):
     mock_client._resolve_student_id.return_value = "99"
+    mock_client.base_url = "https://canvas.test"
     mock_client.get_submission_details.return_value = {
         "workflow_state": "graded",
         "grade": "94%",
@@ -78,7 +79,31 @@ def test_api_submissions_returns_details(mock_client):
     assert data[0]["submitted"] is True
     assert data[0]["graded"] is True
     assert data[0]["comments"] == ["Great work!"]
+    assert data[0]["comments_url"] == "https://canvas.test/courses/1/assignments/456/submissions/99"
     mock_client.get_submission_details.assert_called_once_with("1", "456")
+
+
+@patch("app.canvas_client")
+def test_api_submissions_no_comments_url_when_no_comments(mock_client):
+    mock_client._resolve_student_id.return_value = "99"
+    mock_client.base_url = "https://canvas.test"
+    mock_client.get_submission_details.return_value = {
+        "workflow_state": "submitted",
+        "grade": None,
+        "score": None,
+        "submitted_at": "2026-04-24T20:00:00Z",
+        "submission_comments": [],
+    }
+    flask_app.config["TESTING"] = True
+    with flask_app.test_client() as c:
+        resp = c.post(
+            "/api/submissions",
+            data=json.dumps([{"id": "456", "course_id": "1"}]),
+            content_type="application/json",
+        )
+    data = resp.get_json()
+    assert data[0]["comments"] == []
+    assert data[0]["comments_url"] is None
 
 
 @patch("app.canvas_client")
