@@ -509,6 +509,34 @@ def test_parse_homepage_day_timed_task_without_attend_is_not_live_class():
     assert len(r["tasks"]) == 1
     assert r["tasks"][0]["type_label"] == "due"
 
+def test_classify_task_prefix_submit_and_complete():
+    assert classify_task_prefix("SUBMIT : F.I.T.T. Pre-Assessment") == ("submit", False)
+    assert classify_task_prefix("COMPLETE - your exercise time for the day") == ("complete", False)
+    assert classify_task_prefix("Complete: TedEd sleep video") == ("complete", False)
+
+def test_parse_homepage_day_keeps_submit_complete_without_module_link():
+    # PE/LAUNCH style: recognized action prefix, link is a quiz/page (not modules/items)
+    body = ('<div id="tab1" class="tab-content"><ul>'
+            '<li>SUBMIT : <a href="https://school.instructure.com/courses/11563/quizzes/310356">F.I.T.T. Pre-Assessment</a></li>'
+            '<li>Complete: <a href="https://school.instructure.com/courses/11968/pages/teded">TedEd sleep</a></li>'
+            '</ul></div>')
+    r = parse_homepage_day(body, 0)
+    by = {t["type_label"]: t for t in r["tasks"]}
+    assert set(by) == {"submit", "complete"}
+    assert by["submit"]["item_id"] is None
+    assert by["submit"]["url"].endswith("/quizzes/310356")
+    assert by["submit"]["raw_title"] == "F.I.T.T. Pre-Assessment"
+
+def test_parse_homepage_day_generic_link_text_falls_back_to_full_text():
+    body = ('<div id="tab1" class="tab-content"><ul>'
+            '<li>COMPLETE - your exercise time for the day '
+            '<a href="https://school.instructure.com/courses/1/pages/x">Click Here</a></li>'
+            '</ul></div>')
+    r = parse_homepage_day(body, 0)
+    assert len(r["tasks"]) == 1
+    assert r["tasks"][0]["raw_title"] != "Click Here"
+    assert "exercise time for the day" in r["tasks"][0]["raw_title"]
+
 def test_parse_homepage_day_detects_live_lesson_phrasing():
     # LAUNCH style: "Attend ... live lesson ... zoom"; time is a bare hour range
     # with no am/pm ("9-10") — parsed as the AM start time (9:00 AM).

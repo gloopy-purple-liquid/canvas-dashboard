@@ -26,6 +26,10 @@ def classify_task_prefix(text):
         label = "start"
     elif low.startswith("continue"):
         label = "continue"
+    elif low.startswith("submit"):
+        label = "submit"
+    elif low.startswith("complete"):
+        label = "complete"
     elif "reminder" in low or "⚠" in text:
         label = "reminder"
     elif "independent reading" in low or "📖" in text:
@@ -117,8 +121,12 @@ def parse_homepage_day(body, weekday):
         type_label, optional = classify_task_prefix(text)
         if item_id is None and not optional and type_label == "other":
             continue
+        # Prefer the link text as the title, but fall back to the full line
+        # when the link text is generic/empty (e.g. "Click Here").
+        generic = link_text.strip().lower() in ("", "click here", "here", "link", "this", "click")
+        title = text if (generic or len(link_text.strip()) < 4) else link_text
         result["tasks"].append({
-            "raw_title": link_text or text,
+            "raw_title": title,
             "url": url,
             "item_id": item_id,
             "type_label": type_label,
