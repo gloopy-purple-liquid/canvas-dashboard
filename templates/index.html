@@ -412,9 +412,16 @@
       const zoomBtn = ev.zoom_url && ev.zoom_url.startsWith('https://')
         ? `<a class="zoom-btn" href="${esc(ev.zoom_url)}" target="_blank" rel="noopener">Join Zoom</a>`
         : "";
-      const removeBtn = ev.manual
-        ? `<button class="hide-btn" onclick="removeManualEntry(event,'${esc(ev.manual_id)}')">×</button>`
-        : "";
+      let controls = "";
+      if (ev.manual) {
+        controls = `<button class="hide-btn" onclick="removeManualEntry(event,'${esc(ev.manual_id)}')">×</button>`;
+      } else if (ev.course_id) {
+        controls = `<button class="hide-btn" onclick="openSchedHide(event, this)" data-cid="${esc(ev.course_id)}">×</button>
+          <div class="hide-opts" id="scho-${esc(ev.course_id)}">
+            <button class="hide-opts-btn" data-cid="${esc(ev.course_id)}" onclick="hideSchedCourse(event, this)">Hide ${esc(ev.course_name || ev.title)}</button>
+            <button class="hide-opts-cancel" onclick="closeAllHideOpts(event)">Cancel</button>
+          </div>`;
+      }
       const badge = ev.manual ? `<div class="manual-badge">MANUAL</div>` : "";
       return `
         <div class="card${ev.manual ? ' manual' : ''}">
@@ -424,7 +431,7 @@
             ${badge}
           </div>
           ${zoomBtn}
-          ${removeBtn}
+          ${controls}
         </div>
       `;
     }).join("");
@@ -465,7 +472,7 @@
     }).join("");
   }
 
-  const TASK_TAGS = { due: "Due Today", start: "Start", continue: "Continue", reading: "Reading", reminder: "Reminder", other: "" };
+  const TASK_TAGS = { due: "Due Today", start: "Start", continue: "Continue", submit: "Submit", complete: "Complete", reading: "Reading", reminder: "Reminder", other: "" };
 
   function renderTasks(taskBlocks, homepageAvailable) {
     const note = document.getElementById("homepage-note");
@@ -501,6 +508,23 @@
       }).join("");
       return `<div class="task-course">${esc(block.course_name)}</div>${rows}`;
     }).join("");
+  }
+
+  function openSchedHide(event, btn) {
+    event.stopPropagation();
+    document.querySelectorAll('.hide-opts.open').forEach(el => el.classList.remove('open'));
+    const opts = document.getElementById('scho-' + btn.dataset.cid);
+    if (opts) opts.classList.add('open');
+  }
+
+  async function hideSchedCourse(event, btn) {
+    event.stopPropagation();
+    await fetch('/api/ignore', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ type: 'course', id: btn.dataset.cid }),
+    });
+    loadDay(currentDate);
   }
 
   function renderMissing(missing) {
