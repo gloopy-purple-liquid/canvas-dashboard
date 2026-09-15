@@ -185,10 +185,13 @@ def api_day():
             if not r or not r["in_range"]:
                 continue
             if r["live_class"]:
+                short = _short_course_name(course_map.get(cid, ""))
                 schedule.append({
                     "time": r["live_class"]["time"],
-                    "title": f'{_short_course_name(course_map.get(cid, ""))} — Live Class',
+                    "title": f'{short} — Live Class',
                     "zoom_url": r["zoom_url"],
+                    "course_id": cid,
+                    "course_name": short,
                 })
             if r["tasks"]:
                 tasks.append({
@@ -196,6 +199,16 @@ def api_day():
                     "course_name": course_map.get(cid, ""),
                     "items": r["tasks"],
                 })
+
+        # drop tasks that are assignments already shown in the Assignments
+        # section (avoid the same deliverable appearing in both places)
+        shown_aids = {a["id"] for a in assignments}
+        for block in tasks:
+            block["items"] = [
+                it for it in block["items"]
+                if not (it.get("content_id") and it["content_id"] in shown_aids)
+            ]
+        tasks = [b for b in tasks if b["items"]]
 
         # resolve submission status for submittable tasks
         pairs = [(it, block["course_id"]) for block in tasks for it in block["items"]

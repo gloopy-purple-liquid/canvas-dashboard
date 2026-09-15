@@ -160,6 +160,51 @@ def test_api_day_builds_tasks_with_status(mock_client):
 
 
 @patch("app.canvas_client")
+def test_api_day_dedupes_tasks_that_are_shown_assignments(mock_client):
+    mock_client.get_active_courses.return_value = [{"id": 1, "name": "Math 6 Q1-Q1-1(A-E) 7-8(A)-Jones"}]
+    mock_client.get_assignments_due.return_value = [
+        {"id": "500", "course_id": "1", "title": "Ratios", "due_at": "2026-09-15T23:59:00Z", "points_possible": 10},
+    ]
+    mock_client.get_front_page.return_value = {"title": "W02 09/14 - 09/18 Home", "body": "<html/>"}
+    mock_client.get_module_items_map.return_value = {
+        "m500": {"type": "Assignment", "content_id": 500, "title": "Ratios", "due_at": None, "points": 10},
+        "m999": {"type": "Assignment", "content_id": 999, "title": "Bonus", "due_at": None, "points": 5},
+    }
+    mock_client.get_zoom_url.return_value = None
+    mock_client._resolve_student_id.return_value = "30796"
+    mock_client.get_submission_details.return_value = {"workflow_state": "unsubmitted"}
+    parsed = {"live_class": None, "tasks": [
+        {"raw_title": "Ratios", "url": "u1", "item_id": "m500", "type_label": "complete", "optional": False},
+        {"raw_title": "Bonus", "url": "u2", "item_id": "m999", "type_label": "other", "optional": True},
+    ]}
+    with patch("app.parse_homepage_day", return_value=parsed):
+        flask_app.config["TESTING"] = True
+        with flask_app.test_client() as c:
+            resp = c.get("/api/day?date=2026-09-15")
+    data = resp.get_json()
+    assert any(a["id"] == "500" for a in data["assignments"])
+    titles = [it["title"] for b in data["tasks"] for it in b["items"]]
+    assert "Ratios" not in titles   # deduped: it's a shown assignment
+    assert "Bonus" in titles        # kept: not in the assignments list
+
+
+@patch("app.canvas_client")
+def test_api_day_schedule_entries_carry_course_id(mock_client):
+    mock_client.get_active_courses.return_value = [{"id": 7, "name": "Science 6 Q1-Q1-1(A-E) 5-6(A,C)-Lee"}]
+    mock_client.get_assignments_due.return_value = []
+    mock_client.get_front_page.return_value = {"title": "W02 09/14 - 09/18 Home", "body": "<html/>"}
+    mock_client.get_module_items_map.return_value = {}
+    mock_client.get_zoom_url.return_value = "https://z"
+    with patch("app.parse_homepage_day", return_value={"live_class": {"title": "Live Class", "time": "10:00 AM"}, "tasks": []}):
+        flask_app.config["TESTING"] = True
+        with flask_app.test_client() as c:
+            resp = c.get("/api/day?date=2026-09-15")
+    s = resp.get_json()["schedule"][0]
+    assert s["course_id"] == "7"
+    assert s["course_name"] == "Science 6"
+
+
+@patch("app.canvas_client")
 def test_api_day_homepage_unavailable_for_other_week(mock_client):
     mock_client.get_active_courses.return_value = [{"id": 1, "name": "Math 6 Q1"}]
     mock_client.get_assignments_due.return_value = []
